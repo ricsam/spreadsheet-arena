@@ -37,7 +37,6 @@ import {
   closePane,
   createDemoEngine,
   createEmptyWorkbook,
-  decodeEngine,
   exportWorkbook,
   importFiles,
   makeSnapshot,
@@ -45,11 +44,12 @@ import {
   resizeSplit,
   splitPane,
   updatePane,
-  validateSnapshot,
+  restoreSnapshot,
+  MAX_WORKSPACE_FILE_BYTES,
   type Layout,
   type Pane,
 } from "./model";
-import { readWorkspace, writeWorkspace } from "./persistence";
+import { loadWorkspace, createWorkspaceWriter } from "./persistence";
 import { cellAddress, parseInput, textValue } from "./cells";
 import { Tiles } from "./Tiles";
 import { registerArenaTools } from "./webmcp";
@@ -184,6 +184,7 @@ export function App() {
   const dragDepth = useRef(0);
   const importInFlight = useRef(false);
   const saveGeneration = useRef(0);
+  const [workspaceWriter, setWorkspaceWriter] = useState(createWorkspaceWriter);
   const selection = useMemo(() => new WorkbookSelectionManager(), [engine]);
   const clipboard = useMemo(
     () => new WorkbookClipboardManager(engine),
@@ -208,11 +209,19 @@ export function App() {
 
   useEffect(() => {
     let cancelled = false;
-    readWorkspace()
-      .then((saved) => {
+    loadWorkspace()
+      .then((loaded) => {
+        const saved = loaded?.snapshot;
         if (cancelled) return;
         if (saved) {
-          setEngine(decodeEngine(saved.engine));
+          setWorkspaceWriter(
+            createWorkspaceWriter(loaded!.storageToken, false, {
+              engine: loaded!.engine,
+              revision: 0,
+              serialized: saved.engine,
+            }),
+          );
+          setEngine(loaded!.engine);
           setLayout(saved.layout);
           setActivePaneId(saved.activePaneId);
           if (saved.view) {
@@ -289,8 +298,9 @@ export function App() {
     setSaving("Saving…");
     const timer = setTimeout(() => {
       try {
-        const snapshot = {
-          ...makeSnapshot(engine, layout, active?.id ?? null),
+        const state = {
+          layout,
+          activePaneId: active?.id ?? null,
           view: {
             sidebar,
             showFormulas,
@@ -299,7 +309,8 @@ export function App() {
               : null,
           },
         };
-        writeWorkspace(snapshot)
+        workspaceWriter
+          .save(engine, revision, state)
           .then(() => {
             if (generation === saveGeneration.current)
               setSaving("Saved on this device");
@@ -327,6 +338,7 @@ export function App() {
     sidebar,
     showFormulas,
     maximized,
+    workspaceWriter,
   ]);
 
   useEffect(
@@ -1204,15 +1216,20 @@ export function App() {
           event.target.value = "";
           if (!file) return;
           try {
-            if (file.size > 25 * 1024 * 1024)
-              throw new Error("Workspace backups must be smaller than 25 MB.");
-            const snapshot = validateSnapshot(JSON.parse(await file.text()));
-            const restoredEngine = decodeEngine(snapshot.engine);
+            if (file.size > MAX_WORKSPACE_FILE_BYTES)
+              throw new Error(
+                "Workspace backups must be no larger than 256 MiB.",
+              );
+            const { snapshot, engine: restoredEngine } = restoreSnapshot(
+              JSON.parse(await file.text()),
+            );
             setDialog({
               title: "Restore workspace?",
               description:
                 "This replaces all current workbooks and pane layout. Download a backup of this workspace first if you want to keep it.",
               action: () => {
+                // Replacement is explicit and user-confirmed; normal autosaves use CAS.
+                setWorkspaceWriter(createWorkspaceWriter(null, true));
                 setEngine(restoredEngine);
                 setLayout(snapshot.layout);
                 setActivePaneId(snapshot.activePaneId);

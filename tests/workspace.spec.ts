@@ -1,5 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import ExcelJS from "exceljs";
+import { FormulaEngine } from "@ricsam/formula-engine";
+import { makeSnapshot } from "../src/model";
 
 const launch = (page: Page) =>
   page.getByRole("grid", { name: "Launch budget, Overview", exact: true });
@@ -303,6 +305,147 @@ test("unreadable IndexedDB state is preserved instead of silently replaced", asy
       }),
   );
   expect(saved).toEqual({ corrupt: "keep me" });
+});
+
+test("navigation persists only view state, while edits replace workbook content", async ({
+  page,
+}) => {
+  await page.goto("./");
+  const saved = page
+    .getByRole("status")
+    .filter({ hasText: "Saved on this device" });
+  await expect(saved).toBeVisible();
+  const stored = () =>
+    page.evaluate(
+      async () =>
+        new Promise<Record<string, any>>((resolve, reject) => {
+          const request = indexedDB.open("spreadsheet-arena", 1);
+          request.onsuccess = () => {
+            const db = request.result;
+            const get = db
+              .transaction("workspace")
+              .objectStore("workspace")
+              .get("current");
+            get.onsuccess = () => {
+              resolve(get.result);
+              db.close();
+            };
+            get.onerror = () => reject(get.error);
+          };
+        }),
+    );
+  const initial = await stored();
+  expect(initial.format).toBe("spreadsheet-arena-storage");
+  await gridCell(launch(page), "A4").click();
+  await page.keyboard.press("ArrowDown");
+  await expect(
+    page.getByRole("textbox", { name: "Cell address", exact: true }),
+  ).toHaveValue("A5");
+  await expect(saved).toBeVisible();
+  const moved = await stored();
+  expect(moved.engineId).toBe(initial.engineId);
+  await editViaBar(page, inputs(page), "B4", "75");
+  await expect(saved).toBeVisible();
+  expect((await stored()).engineId).not.toBe(initial.engineId);
+  await page.reload();
+  await expect(gridCell(inputs(page), "B4")).toHaveText("75");
+});
+
+test("restores backups above the old 25 MiB cap and persists content in bounded chunks", async ({
+  page,
+}) => {
+  const engine = new FormulaEngine();
+  engine.addWorkbook({
+    workbookName: "Large backup",
+    data: {
+      workbookMetadata: { note: "x".repeat(26 * 1024 * 1024) },
+      sheets: [{ name: "Sheet1", content: { A1: "Preserved", B1: "=21*2" } }],
+    },
+  });
+  const snapshot = makeSnapshot(
+    engine,
+    {
+      kind: "pane",
+      pane: {
+        id: "large",
+        workbookName: "Large backup",
+        sheetName: "Sheet1",
+        cell: "A1",
+      },
+    },
+    "large",
+  );
+  await page.goto("./");
+  await expect(launch(page)).toBeVisible();
+  await page.getByLabel("Restore workspace file").setInputFiles({
+    name: "large.workspace.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(snapshot)),
+  });
+  await expect(page.getByRole("dialog")).toContainText("Restore workspace?");
+  await page.getByRole("button", { name: "Confirm", exact: true }).click();
+  const grid = page.getByRole("grid", {
+    name: "Large backup, Sheet1",
+    exact: true,
+  });
+  await expect(gridCell(grid, "B1")).toHaveText("42");
+  await expect(
+    page.getByRole("status").filter({ hasText: "Saved on this device" }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(gridCell(grid, "A1")).toHaveText("Preserved");
+  await expect(gridCell(grid, "B1")).toHaveText("42");
+});
+
+test("Excel default and inherited fonts match explicit cells and survive reload", async ({
+  page,
+}) => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Fonts");
+  sheet.getCell("B13").value = "same";
+  sheet.getCell("B13").font = {
+    name: "Calibri",
+    family: 2,
+    size: 11,
+    color: { theme: 1 },
+    scheme: "minor",
+  };
+  sheet.getCell("B14").value = "same";
+  sheet.getRow(16).font = {
+    name: "Arial",
+    size: 12,
+    bold: true,
+    color: { argb: "FF000000" },
+  };
+  sheet.getCell("B16").value = "inherited";
+  await page.goto("./");
+  await page
+    .getByLabel("Import workbook files")
+    .setInputFiles({
+      name: "Fonts.xlsx",
+      mimeType:
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      buffer: Buffer.from(await workbook.xlsx.writeBuffer()),
+    });
+  const grid = page.getByRole("grid", { name: "Fonts, Fonts", exact: true });
+  await expect(grid).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "Cell address", exact: true })
+    .fill("B14");
+  await page.getByRole("button", { name: "Go to cell", exact: true }).click();
+  for (const cell of ["B13", "B14", "B15"]) {
+    await expect(gridCell(grid, cell)).toHaveCSS("font-size", "15px");
+    await expect(gridCell(grid, cell)).toHaveCSS("color", "rgb(0, 0, 0)");
+    await expect(gridCell(grid, cell)).toHaveCSS("font-family", "Calibri");
+  }
+  await expect(gridCell(grid, "B16")).toHaveCSS("font-size", "16px");
+  await expect(gridCell(grid, "B16")).toHaveCSS("font-weight", "700");
+  await expect(
+    page.getByRole("status").filter({ hasText: "Saved on this device" }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(gridCell(grid, "B14")).toHaveCSS("font-size", "15px");
+  await expect(gridCell(grid, "B16")).toHaveCSS("font-weight", "700");
 });
 
 test("mobile toolbar and workbook creation remain usable", async ({ page }) => {

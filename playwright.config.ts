@@ -9,7 +9,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: "npm run dev -- --port 5178 --strictPort",
+    command: "npm run preview -- --port 5178 --strictPort",
     url: "http://127.0.0.1:5178/spreadsheet-arena/",
     reuseExistingServer: !process.env.CI,
   },

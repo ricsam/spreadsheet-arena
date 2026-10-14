@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { FormulaEngine } from "@ricsam/formula-engine";
 import {
   MAX_IMPORT_FILES,
@@ -16,6 +16,7 @@ import {
   uniqueWorkbookName,
   updatePane,
   validateSnapshot,
+  restoreSnapshot,
   type Layout,
 } from "./model";
 
@@ -318,6 +319,36 @@ describe("real formula engine state", () => {
 });
 
 describe("workspace layout", () => {
+  it("captures warm data once without reconstructing engines", () => {
+    const engine = createDemoEngine();
+    engine.getCellValue(cell("Launch budget", "Overview", 3, 11));
+    const reset = vi.spyOn(FormulaEngine.prototype, "resetToSerializedEngine");
+    const serialize = vi.spyOn(engine, "serializeEngine");
+    const value = makeSnapshot(engine, pane, "one");
+    expect(reset).not.toHaveBeenCalled();
+    expect(serialize).toHaveBeenCalledTimes(1);
+    const managers = JSON.parse(value.engine).managers;
+    expect(managers.dependency.nodes.length).toBeGreaterThan(0);
+    expect(managers.cache).toBeDefined();
+    const loaded = restoreSnapshot(value);
+    expect(reset).toHaveBeenCalledTimes(1);
+    expect(
+      loaded.engine.getCellValue(cell("Launch budget", "Overview", 3, 11)),
+    ).toBeCloseTo(7535);
+    reset.mockRestore();
+    serialize.mockRestore();
+  });
+  it("preserves tree identity for no-op selection notifications", () => {
+    expect(updatePane(pane, "one", { cell: "D12" })).toBe(pane);
+    const tree = splitPane(
+      pane,
+      "one",
+      { id: "two", workbookName: "Assumptions", sheetName: "Inputs" },
+      "horizontal",
+    );
+    expect(updatePane(tree, "one", { cell: "D12" })).toBe(tree);
+    expect(updatePane(tree, "missing", { cell: "A1" })).toBe(tree);
+  });
   it("round-trips selection, zoom, engine and nested panes", () => {
     const tree = splitPane(
       pane,

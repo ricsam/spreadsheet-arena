@@ -27,7 +27,18 @@ export interface WorkspaceSnapshot {
   view?: { sidebar: boolean; showFormulas: boolean; maximized: string | null };
 }
 
+export type WorkspaceView = Pick<
+  WorkspaceSnapshot,
+  "layout" | "activePaneId" | "view"
+>;
+export type LoadedWorkspace = {
+  snapshot: WorkspaceSnapshot;
+  engine: FormulaEngine;
+};
+
 export const MAX_IMPORT_FILE_BYTES = 25 * 1024 * 1024;
+// JSON backups are uncompressed and substantially larger than their source XLSX.
+export const MAX_WORKSPACE_FILE_BYTES = 256 * 1024 * 1024;
 export const MAX_IMPORT_FILES = 20;
 
 export function uniqueWorkbookName(
@@ -204,7 +215,6 @@ export function decodeEngine(serialized: string): FormulaEngine {
           throw new Error("Invalid sheet");
       }
     }
-    engine.serializeEngine();
     return engine;
   } catch (error) {
     throw new Error(`Cannot read spreadsheet engine: ${message(error)}`);
@@ -217,7 +227,7 @@ const message = (error: unknown) =>
 // than reconstructing WorkbookData (which would drop style/metadata/table state).
 type Native = ReturnType<typeof JSON.parse>;
 const native = (engine: FormulaEngine): Native =>
-  JSON.parse(engine.serializeEngine());
+  JSON.parse(engine.serializeEngine({ includeEvaluationState: false }));
 function clearDerived(snapshot: Native) {
   snapshot.managers.dependency = { nodes: [], spilledValues: [] };
   snapshot.managers.cache = { evaluationOrders: [], sccs: [] };
@@ -313,7 +323,9 @@ export function exportWorkbook(engine: FormulaEngine, name: string): string {
     ([, ref]: [string, Native]) => ref.address.workbookName === name,
   );
   clearDerived(snapshot);
-  return decodeEngine(JSON.stringify(snapshot)).serializeEngine();
+  return decodeEngine(JSON.stringify(snapshot)).serializeEngine({
+    includeEvaluationState: false,
+  });
 }
 function mergeEngines(
   existing: FormulaEngine,
@@ -517,15 +529,21 @@ export function updatePane(
   patch: Partial<Omit<Pane, "id">>,
 ): Layout | null {
   if (!layout) return null;
-  return layout.kind === "pane"
-    ? layout.pane.id === id
-      ? { ...layout, pane: { ...layout.pane, ...patch } }
-      : layout
-    : {
-        ...layout,
-        first: updatePane(layout.first, id, patch)!,
-        second: updatePane(layout.second, id, patch)!,
-      };
+  if (layout.kind === "pane") {
+    if (
+      layout.pane.id !== id ||
+      Object.entries(patch).every(
+        ([key, value]) => layout.pane[key as keyof Pane] === value,
+      )
+    )
+      return layout;
+    return { ...layout, pane: { ...layout.pane, ...patch } };
+  }
+  const first = updatePane(layout.first, id, patch)!;
+  const second = updatePane(layout.second, id, patch)!;
+  return first === layout.first && second === layout.second
+    ? layout
+    : { ...layout, first, second };
 }
 export function resizeSplit(
   layout: Layout | null,
@@ -553,7 +571,7 @@ function validCell(cell: string): boolean {
 }
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
-export function validateSnapshot(value: unknown): WorkspaceSnapshot {
+export function restoreSnapshot(value: unknown): LoadedWorkspace {
   if (
     !isRecord(value) ||
     value.format !== "spreadsheet-arena" ||
@@ -561,8 +579,28 @@ export function validateSnapshot(value: unknown): WorkspaceSnapshot {
     typeof value.engine !== "string"
   )
     throw new Error("Unsupported workspace format or version");
-  const engine = decodeEngine(value.engine),
-    ids = new Set<string>();
+  const engine = decodeEngine(value.engine);
+  return {
+    engine,
+    snapshot: {
+      format: "spreadsheet-arena",
+      version: 1,
+      engine: value.engine,
+      ...validateWorkspaceView(value, engine),
+    },
+  };
+}
+export function validateSnapshot(value: unknown): WorkspaceSnapshot {
+  return restoreSnapshot(value).snapshot;
+}
+
+/** Validate/detach only the small UI state against the already-live engine. */
+export function validateWorkspaceView(
+  value: unknown,
+  engine: FormulaEngine,
+): WorkspaceView {
+  if (!isRecord(value)) throw new Error("Invalid workspace view");
+  const ids = new Set<string>();
   let count = 0;
   function layout(v: unknown, depth = 0): Layout {
     if (!isRecord(v) || depth > 15) throw new Error("Invalid workspace layout");
@@ -647,9 +685,6 @@ export function validateSnapshot(value: unknown): WorkspaceSnapshot {
     };
   }
   return {
-    format: "spreadsheet-arena",
-    version: 1,
-    engine: value.engine,
     layout: tree,
     activePaneId: value.activePaneId as string | null,
     ...(view ? { view } : {}),
@@ -660,11 +695,12 @@ export function makeSnapshot(
   layout: Layout | null,
   activePaneId: string | null,
 ): WorkspaceSnapshot {
-  return validateSnapshot({
+  return {
     format: "spreadsheet-arena",
     version: 1,
+    // Workspace backups retain warm evaluations for fast reopening; compact
+    // serialization remains useful for standalone workbook interchange.
     engine: engine.serializeEngine(),
-    layout,
-    activePaneId,
-  });
+    ...validateWorkspaceView({ layout, activePaneId }, engine),
+  };
 }
