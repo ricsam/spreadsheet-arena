@@ -81,6 +81,8 @@ Native workbook filtering targets the pinned engine snapshot format; compatibili
 
 The public repository's `pages.yml` workflow verifies tests, builds and deploys `dist/` to GitHub Pages on relevant main pushes (or manual dispatch). Repository **Settings → Pages → Source: GitHub Actions** is required. The Vite base is `/spreadsheet-arena/`. No server, cluster resources, secrets or paid runners are required.
 
+Production JavaScript bundles link to separate `.js.map` files, deployed alongside them in `dist/assets/`. These public source maps include source content so browser DevTools can resolve production stack traces without a local checkout. They are not inlined into the runtime bundles and contain application/dependency code, never workbook data. This does not add error reporting or telemetry.
+
 ## License
 
 MIT. Spreadsheet libraries and bundled fonts retain their own licenses.

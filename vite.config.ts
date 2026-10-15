@@ -5,6 +5,8 @@ export default defineConfig({
   base: "/spreadsheet-arena/",
   plugins: [react()],
   build: {
+    // Public external maps let production DevTools resolve minified traces.
+    sourcemap: true,
     rollupOptions: {
       output: {
         manualChunks(id) {

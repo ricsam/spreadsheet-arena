@@ -11,6 +11,7 @@ import {
   importFiles,
   makeSnapshot,
   panes,
+  reconcileLayout,
   resizeSplit,
   splitPane,
   uniqueWorkbookName,
@@ -319,6 +320,63 @@ describe("real formula engine state", () => {
 });
 
 describe("workspace layout", () => {
+  it("reconciles deleted workbooks in every branch while preserving surviving views", () => {
+    const engine = createDemoEngine();
+    const tree = splitPane(
+      splitPane(
+        pane,
+        "one",
+        {
+          id: "two",
+          workbookName: "Assumptions",
+          sheetName: "Inputs",
+          cell: "B4",
+        },
+        "horizontal",
+      ),
+      "one",
+      { ...pane.pane, id: "duplicate" },
+      "vertical",
+    );
+    expect(reconcileLayout(tree, engine)).toBe(tree);
+    engine.removeWorkbook("Launch budget");
+    const remaining = reconcileLayout(tree, engine);
+    expect(remaining).toEqual({
+      kind: "pane",
+      pane: {
+        id: "two",
+        workbookName: "Assumptions",
+        sheetName: "Inputs",
+        cell: "B4",
+      },
+    });
+    expect(reconcileLayout(remaining, engine)).toBe(remaining);
+    expect(panes(tree)).toHaveLength(3); // no mutation of the previous view
+    expect(() => makeSnapshot(engine, remaining, "two")).not.toThrow();
+    engine.undo();
+    expect(reconcileLayout(remaining, engine)).toBe(remaining); // no resurrected panes
+    engine.removeWorkbook("Assumptions");
+    expect(reconcileLayout(remaining, engine)).toBeNull();
+    expect(reconcileLayout(null, engine)).toBeNull();
+  });
+  it("resets a removed active sheet to the first ordered sheet without changing pane identity or zoom", () => {
+    const engine = createDemoEngine();
+    const sheet = engine.createSheet({ workbookName: "Launch budget" });
+    const tree = updatePane(pane, "one", {
+      sheetName: sheet.name,
+      cell: "Z99",
+    });
+    engine.undo();
+    const reconciled = reconcileLayout(tree, engine);
+    expect(reconciled).toEqual(updatePane(pane, "one", { cell: "A1" }));
+    expect(reconcileLayout(reconciled, engine)).toBe(reconciled);
+    expect(() => makeSnapshot(engine, reconciled, "one")).not.toThrow();
+  });
+  it("closes a pane if its workbook has no sheets", () => {
+    const engine = new FormulaEngine();
+    engine.addWorkbook({ workbookName: "Launch budget", data: { sheets: [] } });
+    expect(reconcileLayout(pane, engine)).toBeNull();
+  });
   it("captures warm data once without reconstructing engines", () => {
     const engine = createDemoEngine();
     engine.getCellValue(cell("Launch budget", "Overview", 3, 11));

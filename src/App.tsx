@@ -43,6 +43,7 @@ import {
   importFiles,
   makeSnapshot,
   panes,
+  reconcileLayout,
   resizeSplit,
   splitPane,
   updatePane,
@@ -160,7 +161,7 @@ function PromptDialog({
 
 export function App() {
   const [engine, setEngine] = useState(() => FormulaEngine.buildEmpty());
-  const [layout, setLayout] = useState<Layout | null>(null);
+  const [storedLayout, setLayout] = useState<Layout | null>(null);
   const [activePaneId, setActivePaneId] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
   const [ready, setReady] = useState(false);
@@ -195,6 +196,11 @@ export function App() {
     () => new WorkbookClipboardManager(engine),
     [engine],
   );
+  // Engine updates are synchronous, but effects run after render. Reconcile
+  // here so deletion/undo never renders a FormulaSheet for a missing workbook.
+  // Commit the pruned tree too: undo restores data, not previously closed panes.
+  const layout = reconcileLayout(storedLayout, engine);
+  if (layout !== storedLayout) setLayout(layout);
   const allPanes = panes(layout);
   const active = allPanes.find((p) => p.id === activePaneId) ?? allPanes[0];
   const books = [...engine.getWorkbooks().keys()];
@@ -277,26 +283,6 @@ export function App() {
   }, [notifyError]);
 
   useEffect(() => engine.onUpdate(() => setRevision((r) => r + 1)), [engine]);
-  // Undo, deletion and imported snapshots can remove a workbook or active sheet.
-  useEffect(() => {
-    setLayout((current) => {
-      let next = current;
-      for (const pane of panes(current)) {
-        if (!engine.hasWorkbook(pane.workbookName))
-          next = next && closePane(next, pane.id);
-        else if (!engine.getSheet(pane))
-          next =
-            next &&
-            updatePane(next, pane.id, {
-              sheetName:
-                engine.getOrderedSheetNames(pane.workbookName)[0] ?? "",
-              cell: "A1",
-            });
-      }
-      return next;
-    });
-  }, [engine, revision]);
-
   useEffect(() => {
     if (!ready || !autosave) return;
     const generation = ++saveGeneration.current;

@@ -490,6 +490,29 @@ export function panes(layout: Layout | null): Pane[] {
       ? [layout.pane]
       : [...panes(layout.first), ...panes(layout.second)];
 }
+/** Reconcile views with mutable engine data before any pane or formula-bar reads. */
+export function reconcileLayout(
+  layout: Layout | null,
+  engine: FormulaEngine,
+): Layout | null {
+  if (!layout) return null;
+  if (layout.kind === "pane") {
+    const { pane } = layout;
+    const workbook = engine.getWorkbooks().get(pane.workbookName);
+    if (!workbook) return null;
+    if (workbook.sheets.has(pane.sheetName)) return layout;
+    const sheetName = engine.getOrderedSheetNames(pane.workbookName)[0];
+    return sheetName
+      ? { ...layout, pane: { ...pane, sheetName, cell: "A1" } }
+      : null;
+  }
+  const first = reconcileLayout(layout.first, engine);
+  const second = reconcileLayout(layout.second, engine);
+  if (!first || !second) return first ?? second;
+  return first === layout.first && second === layout.second
+    ? layout
+    : { ...layout, first, second };
+}
 export function splitPane(
   layout: Layout | null,
   targetId: string,
