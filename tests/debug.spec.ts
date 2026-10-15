@@ -11,14 +11,24 @@ const formulaBar = (page: Page) =>
 const saved = (page: Page) =>
   page.getByRole("status").filter({ hasText: "Saved on this device" });
 async function enableDebug(page: Page) {
-  await page.locator("summary").filter({ hasText: "Workspace" }).click();
-  const toggle = page.getByRole("button", {
-    name: "Debug mode · off",
+  await expect(page.getByRole("main")).toBeVisible();
+  const showSidebar = page.getByRole("button", {
+    name: "Show sidebar",
     exact: true,
   });
-  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  if (await showSidebar.isVisible()) await showSidebar.click();
+  await page.getByRole("button", { name: "Workspace", exact: true }).click();
+  const toggle = page.getByRole("menuitemcheckbox", {
+    name: "Debug mode",
+    exact: true,
+  });
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
   await toggle.click();
   await expect(page.getByRole("region", { name: "Debug tools" })).toBeVisible();
+  if ((page.viewportSize()?.width ?? 1440) <= 900)
+    await page
+      .getByRole("button", { name: "Hide sidebar", exact: true })
+      .click();
 }
 async function clearCache(page: Page) {
   await page
@@ -184,12 +194,13 @@ test("debug tools remain accessible on mobile and can be disabled", async ({
   await page.getByRole("button", { name: "Disable debug mode" }).click();
   await expect(panel).toHaveCount(0);
   await enableDebug(page);
-  await page.locator("summary").filter({ hasText: "Workspace" }).click();
-  const toggle = page.getByRole("button", {
-    name: "Debug mode · on",
+  await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
+  await page.getByRole("button", { name: "Workspace", exact: true }).click();
+  const toggle = page.getByRole("menuitemcheckbox", {
+    name: "Debug mode",
     exact: true,
   });
-  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await expect(toggle).toHaveAttribute("aria-checked", "true");
   await toggle.click();
   await expect(panel).toHaveCount(0);
 });

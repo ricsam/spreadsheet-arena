@@ -7,11 +7,8 @@ import {
   type ReactNode,
 } from "react";
 import { FormulaEngine, indexToColumn } from "@ricsam/formula-engine";
-import {
-  FormulaSheet,
-  WorkbookClipboardManager,
-  WorkbookSelectionManager,
-} from "@ricsam/react-spreadsheets";
+import { WorkbookSelectionManager } from "@ricsam/react-spreadsheets";
+import { WorkbookSheet } from "./WorkbookSheet";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -19,14 +16,16 @@ import {
   Check,
   ChevronDown,
   Columns2,
-  Database,
   FileSpreadsheet,
   FolderOpen,
   HelpCircle,
-  Link2,
   Maximize2,
   Minimize2,
   PanelLeftClose,
+  PanelRightClose,
+  PanelRightOpen,
+  Moon,
+  Sun,
   Plus,
   Redo2,
   RotateCcw,
@@ -56,6 +55,22 @@ import { loadWorkspace, createWorkspaceWriter } from "./persistence";
 import { cellAddress, parseInput, textValue } from "./cells";
 import { Tiles } from "./Tiles";
 import { registerArenaTools } from "./webmcp";
+import { Button } from "./components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuCheckboxItem,
+} from "./components/ui/dropdown-menu";
+import { ResizableSidebar } from "./ResizableSidebar";
+import { useTheme } from "./theme";
+import { useSidebarPreferences } from "./sidebar-preferences";
+import { WorkspaceClipboardManager } from "./workspace-clipboard";
+import { ClipboardActions } from "./ClipboardActions";
+import { WorkbookInspector } from "./WorkbookInspector";
+import { StyleActions } from "./StyleActions";
 
 type Notice = { message: string; kind: "info" | "error" };
 type DialogState = {
@@ -85,15 +100,17 @@ function IconButton({
   children: ReactNode;
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
-    <button
+    <Button
       type="button"
-      className="icon-button"
+      variant="ghost"
+      size="icon"
+      className="icon-button size-7 p-1"
       aria-label={label}
       title={label}
       {...props}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 function PromptDialog({
@@ -128,7 +145,7 @@ function PromptDialog({
             <X size={18} />
           </IconButton>
         </div>
-        <p>{state.description}</p>
+        {state.description && <p>{state.description}</p>}
         {state.label && (
           <label className="field-label">
             {state.label}
@@ -180,7 +197,12 @@ export function App() {
   const [showFormulas, setShowFormulas] = useState(false);
   // Debug tools are opt-in for this page session, not part of workbook backups.
   const [debugMode, setDebugMode] = useState(false);
-  const workspaceMenu = useRef<HTMLDetailsElement>(null);
+  const { theme, toggleTheme } = useTheme();
+  const { leftWidth, rightWidth, setLeftWidth, setRightWidth } =
+    useSidebarPreferences();
+  const [inspector, setInspector] = useState(
+    () => window.matchMedia("(min-width: 1100px)").matches,
+  );
   const [cell, setCell] = useState("A1");
   const [formula, setFormula] = useState("");
   const [formulaDirty, setFormulaDirty] = useState(false);
@@ -193,7 +215,7 @@ export function App() {
   const [workspaceWriter, setWorkspaceWriter] = useState(createWorkspaceWriter);
   const selection = useMemo(() => new WorkbookSelectionManager(), [engine]);
   const clipboard = useMemo(
-    () => new WorkbookClipboardManager(engine),
+    () => new WorkspaceClipboardManager(engine),
     [engine],
   );
   // Engine updates are synchronous, but effects run after render. Reconcile
@@ -281,6 +303,18 @@ export function App() {
       cancelled = true;
     };
   }, [notifyError]);
+
+  useEffect(() => {
+    const narrow = window.matchMedia("(max-width: 900px)");
+    const collapsePanels = () => {
+      if (narrow.matches) {
+        setSidebar(false);
+        setInspector(false);
+      }
+    };
+    narrow.addEventListener("change", collapsePanels);
+    return () => narrow.removeEventListener("change", collapsePanels);
+  }, []);
 
   useEffect(() => engine.onUpdate(() => setRevision((r) => r + 1)), [engine]);
   useEffect(() => {
@@ -441,10 +475,6 @@ export function App() {
         throw new Error("Close a pane before creating another workbook.");
       const actual = createEmptyWorkbook(engine, name.trim());
       openBook(actual);
-      setNotice({
-        kind: "info",
-        message: `Created ${actual}. All workbooks share one formula engine.`,
-      });
       return actual;
     },
     [engine, openBook, layout],
@@ -650,7 +680,8 @@ export function App() {
               height: `${100 / zoom}%`,
             }}
           >
-            <FormulaSheet
+            <WorkbookSheet
+              theme={theme}
               key={`${pane.workbookName}:${sheetName}`}
               engine={engine}
               workbookName={pane.workbookName}
@@ -781,330 +812,232 @@ export function App() {
       <a href="#workspace" className="skip-link">
         Skip to workspace
       </a>
-      <header className="app-header">
-        <div className="brand">
-          <span className="brand-icon">
-            <FileSpreadsheet size={21} />
-          </span>
-          <h1>
-            spreadsheet<span>arena</span>
-          </h1>
-          <span className="beta">BETA</span>
-        </div>
-        <div className="header-right">
-          <span
-            className={`save-status ${saving === "Not saved" ? "error-text" : ""}`}
-            role="status"
-          >
-            <span className="status-dot" />
-            {saving}
-          </span>
-          <a
-            className="github-link"
-            href="https://github.com/ricsam/spreadsheet-arena"
-            target="_blank"
-            rel="noreferrer"
-          >
-            GitHub ↗
-          </a>
-          <IconButton
-            label="Help and automation"
-            onClick={() => setHelp(!help)}
-          >
-            <HelpCircle size={19} />
-          </IconButton>
-        </div>
-      </header>
+
       <div className="app-body">
         {sidebar && (
-          <aside className="sidebar" aria-label="Workbook library">
-            <div className="sidebar-title">
-              <span>WORKSPACE</span>
-              <IconButton
-                label="Hide sidebar"
-                onClick={() => setSidebar(false)}
+          <ResizableSidebar
+            side="left"
+            width={leftWidth}
+            onWidthChange={setLeftWidth}
+            aria-label="Workbook library"
+          >
+            <div className="sidebar">
+              <div className="sidebar-title">
+                <div className="brand">
+                  <span className="brand-icon">
+                    <FileSpreadsheet size={19} />
+                  </span>
+                  <h1>
+                    spreadsheet<span>arena</span>
+                  </h1>
+                </div>
+                <IconButton
+                  label="Hide sidebar"
+                  onClick={() => setSidebar(false)}
+                >
+                  <PanelLeftClose size={16} />
+                </IconButton>
+              </div>
+              <Button
+                className="new-workbook"
+                onClick={() =>
+                  setDialog({
+                    title: "New workbook",
+                    label: "Workbook name",
+                    description: "",
+                    initial: "Untitled workbook",
+                    action: createBook,
+                  })
+                }
               >
-                <PanelLeftClose size={16} />
-              </IconButton>
-            </div>
-            <button
-              className="button primary new-workbook"
-              onClick={() =>
-                setDialog({
-                  title: "New workbook",
-                  label: "Workbook name",
-                  description:
-                    "A fresh workbook, connected to the same formula engine.",
-                  initial: "Untitled workbook",
-                  action: createBook,
-                })
-              }
-            >
-              <Plus size={17} />
-              New workbook
-            </button>
-            <label className="search-field">
-              <Search size={15} />
-              <input
-                aria-label="Filter workbooks"
-                placeholder="Find a workbook…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              <span>⌕</span>
-            </label>
-            <div className="library-label">
-              WORKBOOKS <span>{books.length}</span>
-            </div>
-            <nav aria-label="Workbooks" className="workbook-list">
-              {books
-                .filter((name) =>
-                  name.toLowerCase().includes(query.toLowerCase()),
-                )
-                .map((name, index) => {
-                  const open = allPanes.some((p) => p.workbookName === name);
-                  const current = active?.workbookName === name;
-                  const sheets = engine.getOrderedSheetNames(name);
-                  return (
-                    <div
-                      className={`library-book ${current ? "current" : ""}`}
-                      key={name}
+                <Plus size={17} />
+                New workbook
+              </Button>
+              <div className="library-actions">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => upload.current?.click()}
+                  disabled={busy}
+                >
+                  <ArrowUpFromLine size={15} />
+                  {busy ? "Importing…" : "Import"}
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <FolderOpen size={15} />
+                      Workspace
+                      <ChevronDown size={13} />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuItem onSelect={downloadWorkspace}>
+                      Download workspace backup
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => restore.current?.click()}>
+                      Restore workspace backup…
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuCheckboxItem
+                      checked={debugMode}
+                      onCheckedChange={setDebugMode}
                     >
-                      <button
-                        className="book-button"
-                        aria-label={`Open ${name}`}
-                        aria-current={current ? "true" : undefined}
-                        onClick={() => {
-                          try {
-                            openBook(name);
-                          } catch (e) {
-                            notifyError(e);
-                          }
-                        }}
+                      Debug mode
+                    </DropdownMenuCheckboxItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+              <label className="search-field">
+                <Search size={15} />
+                <input
+                  aria-label="Filter workbooks"
+                  placeholder="Find a workbook…"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+                <span>⌕</span>
+              </label>
+              <div className="library-label">
+                WORKBOOKS <span>{books.length}</span>
+              </div>
+              <nav aria-label="Workbooks" className="workbook-list">
+                {books
+                  .filter((name) =>
+                    name.toLowerCase().includes(query.toLowerCase()),
+                  )
+                  .map((name, index) => {
+                    const open = allPanes.some((p) => p.workbookName === name);
+                    const current = active?.workbookName === name;
+                    const sheets = engine.getOrderedSheetNames(name);
+                    return (
+                      <div
+                        className={`library-book ${current ? "current" : ""}`}
+                        key={name}
                       >
-                        <span className={`book-icon tone-${index % 3}`}>
-                          <FileSpreadsheet size={17} />
-                        </span>
-                        <span className="book-name">
-                          {name}
-                          <small>
-                            {sheets.length}{" "}
-                            {sheets.length === 1 ? "sheet" : "sheets"}
-                            {open ? " · open" : ""}
-                          </small>
-                        </span>
-                        <ChevronDown size={13} />
-                      </button>
-                      {current && (
-                        <div className="book-sheets">
-                          {sheets.map((sheet) => (
-                            <button
-                              key={sheet}
-                              onClick={() => openBook(name, sheet)}
-                              className={
-                                active?.sheetName === sheet ? "selected" : ""
-                              }
-                            >
-                              <span>▦</span>
-                              {sheet}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      <div className="book-utilities">
                         <button
-                          aria-label={`Download ${name}`}
+                          className="book-button"
+                          aria-label={`Open ${name}`}
+                          aria-current={current ? "true" : undefined}
                           onClick={() => {
                             try {
-                              download(
-                                `${name}.workbook.json`,
-                                exportWorkbook(engine, name),
-                              );
+                              openBook(name);
                             } catch (e) {
                               notifyError(e);
                             }
                           }}
                         >
-                          <ArrowDownToLine size={12} />
-                          Export
+                          <span className={`book-icon tone-${index % 3}`}>
+                            <FileSpreadsheet size={17} />
+                          </span>
+                          <span className="book-name">
+                            {name}
+                            <small>
+                              {sheets.length}{" "}
+                              {sheets.length === 1 ? "sheet" : "sheets"}
+                              {open ? " · open" : ""}
+                            </small>
+                          </span>
+                          <ChevronDown size={13} />
                         </button>
-                        <button
-                          aria-label={`Remove ${name}`}
-                          onClick={() =>
-                            setDialog({
-                              title: `Remove ${name}?`,
-                              description:
-                                "This removes the workbook from this device. Formulas in other workbooks may refer to it. Export a copy first; removal can be undone.",
-                              danger: true,
-                              action: () => engine.removeWorkbook(name),
-                            })
-                          }
-                        >
-                          <X size={12} />
-                          Remove
-                        </button>
+                        {current && (
+                          <div className="book-sheets">
+                            {sheets.map((sheet) => (
+                              <button
+                                key={sheet}
+                                onClick={() => openBook(name, sheet)}
+                                className={
+                                  active?.sheetName === sheet ? "selected" : ""
+                                }
+                              >
+                                <span>▦</span>
+                                {sheet}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        <div className="book-utilities">
+                          <button
+                            aria-label={`Download ${name}`}
+                            onClick={() => {
+                              try {
+                                download(
+                                  `${name}.workbook.json`,
+                                  exportWorkbook(engine, name),
+                                );
+                              } catch (e) {
+                                notifyError(e);
+                              }
+                            }}
+                          >
+                            <ArrowDownToLine size={12} />
+                            Export
+                          </button>
+                          <button
+                            aria-label={`Remove ${name}`}
+                            onClick={() =>
+                              setDialog({
+                                title: `Remove ${name}?`,
+                                description:
+                                  "This removes the workbook from this device. Formulas in other workbooks may refer to it. Export a copy first; removal can be undone.",
+                                danger: true,
+                                action: () => engine.removeWorkbook(name),
+                              })
+                            }
+                          >
+                            <X size={12} />
+                            Remove
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              {!books.length && (
-                <p className="library-empty">
-                  Your workbooks will appear here.
-                </p>
-              )}
-            </nav>
-            <button
-              className="import-zone"
-              onClick={() => upload.current?.click()}
-              disabled={busy}
-            >
-              <span>
-                <ArrowUpFromLine size={20} />
-              </span>
-              <strong>{busy ? "Importing…" : "Drop a workbook here"}</strong>
-              <small>or click to browse files</small>
-              <em>XLSX · CSV · TSV · JSON</em>
-            </button>
-            <div className="local-note">
-              <Database size={15} />
-              <span>
-                Local by design.
-                <br />
-                <small>Your files stay in your browser.</small>
-              </span>
+                    );
+                  })}
+              </nav>
+              <div className="sidebar-footer">
+                <a
+                  className="github-link"
+                  href="https://github.com/ricsam/spreadsheet-arena"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  GitHub ↗
+                </a>
+                <div className="sidebar-footer-actions">
+                  <IconButton
+                    label={
+                      theme === "dark"
+                        ? "Switch to light mode"
+                        : "Switch to dark mode"
+                    }
+                    onClick={toggleTheme}
+                  >
+                    {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+                  </IconButton>
+                  <IconButton
+                    label="Help and automation"
+                    onClick={() => setHelp(!help)}
+                  >
+                    <HelpCircle size={17} />
+                  </IconButton>
+                </div>
+              </div>
             </div>
-          </aside>
+          </ResizableSidebar>
         )}
         <main id="workspace" className="workspace" tabIndex={-1}>
-          <div className="workspace-title">
-            <div>
-              {!sidebar && (
-                <IconButton
-                  label="Show sidebar"
-                  onClick={() => setSidebar(true)}
-                >
-                  <FolderOpen size={18} />
-                </IconButton>
-              )}
-              <h2>Your workspace</h2>
-              <span className="connected-badge">
-                <Link2 size={12} />
-                One connected engine
-              </span>
-            </div>
-            <div className="workspace-controls">
-              <button
-                className="button"
-                onClick={() => upload.current?.click()}
-                disabled={busy}
-              >
-                <ArrowUpFromLine size={15} />
-                Import
-              </button>
-              <details className="export-menu" ref={workspaceMenu}>
-                <summary className="button">
-                  <ArrowDownToLine size={15} />
-                  Workspace
-                  <ChevronDown size={13} />
-                </summary>
-                <div className="menu-content">
-                  <button onClick={downloadWorkspace}>
-                    Download workspace backup
-                  </button>
-                  <button onClick={() => restore.current?.click()}>
-                    Restore workspace backup…
-                  </button>
-                  <small>Includes all workbooks and pane layout.</small>
-                  <button
-                    aria-pressed={debugMode}
-                    onClick={() => {
-                      setDebugMode((enabled) => !enabled);
-                      if (workspaceMenu.current)
-                        workspaceMenu.current.open = false;
-                    }}
-                  >
-                    Debug mode{debugMode ? " · on" : " · off"}
-                  </button>
-                </div>
-              </details>
-            </div>
-          </div>
-          <div className="workspace-subtitle">
-            A little room for your big ideas. Arrange, connect, and calculate.
-          </div>
-          {debugMode && (
-            <section className="debug-panel" aria-label="Debug tools">
-              <div className="debug-description">
-                <strong>
-                  <Bug size={15} /> Debug mode
-                </strong>
-                <span>
-                  Clear cached calculations across all workbooks without
-                  changing data or undo history.
-                </span>
-              </div>
-              <button
-                className="button"
-                onClick={clearFormulaCache}
-                disabled={!ready || busy || !books.length}
-                title="Recalculate results on demand. Does not clear browser storage or reload workbooks."
-              >
-                <RotateCcw size={15} />
-                Clear formula cache
-              </button>
-              <IconButton
-                label="Disable debug mode"
-                onClick={() => setDebugMode(false)}
-              >
-                <X size={16} />
-              </IconButton>
-            </section>
-          )}
-          <div className="command-bar">
-            <div className="history-controls">
-              <IconButton
-                label="Undo"
-                disabled={!engine.canUndo()}
-                onClick={() => engine.undo()}
-              >
-                <Undo2 size={16} />
-              </IconButton>
-              <IconButton
-                label="Redo"
-                disabled={!engine.canRedo()}
-                onClick={() => engine.redo()}
-              >
-                <Redo2 size={16} />
-              </IconButton>
-            </div>
-            <span className="toolbar-divider" />
-            <button
-              className={`text-button ${showFormulas ? "pressed" : ""}`}
-              aria-pressed={showFormulas}
-              onClick={() => setShowFormulas(!showFormulas)}
-            >
-              ƒx <span>Show formulas</span>
-            </button>
-            <div className="command-spacer" />
-            <span className="pane-counter">
-              {allPanes.length} {allPanes.length === 1 ? "pane" : "panes"}
-            </span>
-            <IconButton
-              label="Split active pane right"
-              disabled={!active}
-              onClick={() => active && split(active, "horizontal")}
-            >
-              <Columns2 size={16} />
-            </IconButton>
-            <IconButton
-              label="Split active pane below"
-              disabled={!active}
-              onClick={() => active && split(active, "vertical")}
-            >
-              <Rows2 size={16} />
-            </IconButton>
-          </div>
           <div className="formula-bar">
+            {!sidebar && (
+              <IconButton
+                label="Show sidebar"
+                onClick={() => {
+                  setSidebar(true);
+                  if (window.matchMedia("(max-width: 900px)").matches)
+                    setInspector(false);
+                }}
+              >
+                <FolderOpen size={18} />
+              </IconButton>
+            )}
             <form
               className="cell-jump"
               onSubmit={(event) => {
@@ -1138,11 +1071,7 @@ export function App() {
               <input
                 ref={formulaInput}
                 aria-label="Cell value or formula"
-                placeholder={
-                  active
-                    ? "Enter a value or =formula"
-                    : "Open a workbook to start editing"
-                }
+
                 value={formula}
                 disabled={!active}
                 onChange={(event) => {
@@ -1163,7 +1092,105 @@ export function App() {
                 <Check size={16} />
               </button>
             </form>
+            <IconButton
+              label={inspector ? "Hide inspector" : "Show inspector"}
+              onClick={() => {
+                setInspector(!inspector);
+                if (
+                  !inspector &&
+                  window.matchMedia("(max-width: 900px)").matches
+                )
+                  setSidebar(false);
+              }}
+            >
+              {inspector ? (
+                <PanelRightClose size={17} />
+              ) : (
+                <PanelRightOpen size={17} />
+              )}
+            </IconButton>
           </div>
+          <div
+            className="command-bar"
+            role="toolbar"
+            aria-label="Workbook actions"
+          >
+            <div className="history-controls">
+              <IconButton
+                label="Undo"
+                disabled={!engine.canUndo()}
+                onClick={() => engine.undo()}
+              >
+                <Undo2 size={16} />
+              </IconButton>
+              <IconButton
+                label="Redo"
+                disabled={!engine.canRedo()}
+                onClick={() => engine.redo()}
+              >
+                <Redo2 size={16} />
+              </IconButton>
+            </div>
+            <span className="toolbar-divider" />
+            <ClipboardActions
+              engine={engine}
+              selection={selection}
+              clipboard={clipboard}
+              active={active}
+              onError={notifyError}
+            />
+            <span className="toolbar-divider" />
+            <StyleActions
+              engine={engine}
+              selection={selection}
+              active={active}
+              revision={revision}
+              onError={notifyError}
+            />
+            <span className="toolbar-divider" />
+            <IconButton
+              label="Show formulas"
+              aria-pressed={showFormulas}
+              onClick={() => setShowFormulas(!showFormulas)}
+            >
+              ƒx
+            </IconButton>
+            <div className="command-spacer" />
+            <IconButton
+              label="Split active pane right"
+              disabled={!active}
+              onClick={() => active && split(active, "horizontal")}
+            >
+              <Columns2 size={16} />
+            </IconButton>
+            <IconButton
+              label="Split active pane below"
+              disabled={!active}
+              onClick={() => active && split(active, "vertical")}
+            >
+              <Rows2 size={16} />
+            </IconButton>
+          </div>
+          {debugMode && (
+            <section className="debug-panel" aria-label="Debug tools">
+              <Bug size={15} />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearFormulaCache}
+                disabled={!ready || busy || !books.length}
+              >
+                <RotateCcw size={15} />
+                Clear formula cache
+              </Button>
+              <IconButton
+                label="Disable debug mode"
+                onClick={() => setDebugMode(false)}
+              >
+                <X size={16} />
+              </IconButton>
+            </section>
+          )}
           {notice && (
             <div
               className={`notice ${notice.kind}`}
@@ -1198,12 +1225,6 @@ export function App() {
                 <div className="empty-illustration">
                   <FileSpreadsheet size={45} />
                 </div>
-                <h2>Make room for your next idea.</h2>
-                <p>
-                  Drop an Excel workbook, or start with a blank canvas.
-                  <br />
-                  Every workbook connects to the same formula engine.
-                </p>
                 <button
                   className="button primary"
                   onClick={() => createBook("Untitled workbook")}
@@ -1229,13 +1250,69 @@ export function App() {
                 ? `${active.workbookName} / ${active.sheetName}`
                 : "No workbook open"}
             </span>
-            <span>
+            {!sidebar && (
+              <div className="collapsed-sidebar-actions">
+                <IconButton
+                  label={
+                    theme === "dark"
+                      ? "Switch to light mode"
+                      : "Switch to dark mode"
+                  }
+                  onClick={toggleTheme}
+                >
+                  {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+                </IconButton>
+                <IconButton
+                  label="Help and automation"
+                  onClick={() => setHelp(!help)}
+                >
+                  <HelpCircle size={16} />
+                </IconButton>
+              </div>
+            )}
+            <span role="status">
               {active?.cell ?? "A1"}
               <span className="status-separator">|</span>
               {saving}
             </span>
           </footer>
         </main>
+        {inspector && (
+          <ResizableSidebar
+            side="right"
+            width={rightWidth}
+            onWidthChange={setRightWidth}
+            minWidth={260}
+            maxWidth={440}
+            aria-label="Workbook inspector"
+          >
+            <div className="inspector-heading">
+              <span
+                className="inspector-context"
+                title={
+                  active
+                    ? `${active.workbookName} / ${active.sheetName}`
+                    : undefined
+                }
+              >
+                {active?.workbookName ?? "Workbook"}
+              </span>
+              <IconButton
+                label="Close inspector"
+                onClick={() => setInspector(false)}
+              >
+                <X size={17} />
+              </IconButton>
+            </div>
+            <WorkbookInspector
+              engine={engine}
+              selection={selection}
+              active={active}
+              revision={revision}
+              onError={notifyError}
+            />
+          </ResizableSidebar>
+        )}
       </div>
       <input
         ref={upload}

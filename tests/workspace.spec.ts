@@ -155,7 +155,9 @@ test("Excel and CSV import, corrupt input, workbook export and workspace restora
     .filter({ has: page.locator("svg") })
     .click();
   const backupDownload = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download workspace backup" }).click();
+  await page
+    .getByRole("menuitem", { name: "Download workspace backup" })
+    .click();
   const backup = await backupDownload;
   const backupBytes = await (
     await import("node:fs/promises")
@@ -419,14 +421,12 @@ test("Excel default and inherited fonts match explicit cells and survive reload"
   };
   sheet.getCell("B16").value = "inherited";
   await page.goto("./");
-  await page
-    .getByLabel("Import workbook files")
-    .setInputFiles({
-      name: "Fonts.xlsx",
-      mimeType:
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      buffer: Buffer.from(await workbook.xlsx.writeBuffer()),
-    });
+  await page.getByLabel("Import workbook files").setInputFiles({
+    name: "Fonts.xlsx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: Buffer.from(await workbook.xlsx.writeBuffer()),
+  });
   const grid = page.getByRole("grid", { name: "Fonts, Fonts", exact: true });
   await expect(grid).toBeVisible();
   await page

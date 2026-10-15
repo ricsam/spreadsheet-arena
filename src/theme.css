@@ -1,0 +1,160 @@
+@layer theme, base, components, utilities;
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "@ricsam/react-spreadsheets/styles.css" layer(base);
+@import "./styles.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: #ffffff;
+  --foreground: #20252b;
+  --card: #ffffff;
+  --card-foreground: #20252b;
+  --popover: #ffffff;
+  --popover-foreground: #20252b;
+  --primary: #246b51;
+  --primary-foreground: #ffffff;
+  --secondary: #f0f2f3;
+  --secondary-foreground: #303840;
+  --muted: #f4f5f6;
+  --muted-foreground: #69717c;
+  --accent: #e9f1ed;
+  --accent-foreground: #205c46;
+  --destructive: #b83a3a;
+  --destructive-foreground: #ffffff;
+  --border: #e0e4e7;
+  --input: #d7dde1;
+  --ring: #3d8a6b;
+  --sidebar: #f8f9fa;
+  --sidebar-foreground: #343c45;
+}
+.dark {
+  --background: #171a1e;
+  --foreground: #e5e8ec;
+  --card: #1d2126;
+  --card-foreground: #e5e8ec;
+  --popover: #23282f;
+  --popover-foreground: #e5e8ec;
+  --primary: #7ac7a4;
+  --primary-foreground: #12281f;
+  --secondary: #2b3037;
+  --secondary-foreground: #e0e5ea;
+  --muted: #242930;
+  --muted-foreground: #a0aab6;
+  --accent: #2b4037;
+  --accent-foreground: #abe2c8;
+  --destructive: #e16c6c;
+  --destructive-foreground: #241414;
+  --border: #343b44;
+  --input: #424b56;
+  --ring: #7ac7a4;
+  --sidebar: #1c2025;
+  --sidebar-foreground: #d5dce4;
+}
+
+@layer components {
+  .resizable-sidebar {
+    position: relative;
+    flex: 0 0 var(--sidebar-width);
+    width: var(--sidebar-width);
+    max-width: min(var(--sidebar-width), 80vw);
+    min-width: 0;
+    min-height: 0;
+    background: var(--sidebar);
+    color: var(--sidebar-foreground);
+  }
+  .resizable-sidebar-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    min-width: 0;
+    overflow: auto;
+  }
+  .resizable-sidebar-content > .sidebar {
+    width: 100%;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  @media (max-width: 900px) {
+    .resizable-sidebar {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      z-index: 25;
+      box-shadow: 0 8px 28px #0003;
+    }
+    .resizable-sidebar[data-side="left"] {
+      left: 0;
+    }
+    .resizable-sidebar[data-side="right"] {
+      right: 0;
+    }
+  }
+  .sidebar-resize-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 8px;
+    z-index: 20;
+    cursor: col-resize;
+    touch-action: none;
+    user-select: none;
+    outline: none;
+  }
+  [data-side="left"] > .sidebar-resize-handle {
+    right: -4px;
+  }
+  [data-side="right"] > .sidebar-resize-handle {
+    left: -4px;
+  }
+  .sidebar-resize-handle::after {
+    content: "";
+    position: absolute;
+    inset: 0 3px;
+    background: transparent;
+    transition: background 120ms;
+  }
+  .sidebar-resize-handle:hover::after,
+  .sidebar-resize-handle:focus-visible::after {
+    background: var(--ring);
+  }
+  .sidebar-resize-handle:focus-visible {
+    box-shadow: inset 0 0 0 1px var(--ring);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-resize-handle::after {
+    transition: none;
+  }
+}
