@@ -29,6 +29,12 @@ JSON accepts native `FormulaEngine.serializeEngine()` snapshots, Arena backups, 
 
 This is not full Excel fidelity: charts, images, macros, pivot tables, legacy `.xls` and encrypted files are unsupported. Merges, frozen panes and some formatting are retained as metadata but not rendered. Unsupported formulas remain formulas and display errors; converter diagnostics are shown instead of silently promising fidelity. Export is JSON, **not `.xlsx`**. New Excel imports resolve default, row/column and named-font styles and retain the workbook default font for unstyled cells. Workspaces imported by older versions do not contain the missing Excel defaults: reimport the original XLSX to recover them; no font is guessed from neighboring cells.
 
+## Debug mode
+
+Open **Workspace → Debug mode** to reveal **Clear formula cache**. This calls the engine's public `clearCache()` API across all connected workbooks. Cached calculations are discarded and results recalculate on demand, including visible cells. It does not reload or reinitialize workbook data, clear browser storage, reset undo/redo, or change pane layout and selections. Large workbooks may take time to recalculate.
+
+Debug mode is off by default and lasts only until you reload the page. Disable it from the panel or Workspace menu. It is not included in backups and does not expose a global engine object.
+
 ## Accessibility and automation
 
 `@ricsam/react-spreadsheets` and `@ricsam/selection-manager` provide named ARIA grids, rows, cells and headers, selection state, editor labels and keyboard-capture accessibility. Scope to the named grid (`Launch budget, Overview`) or labelled pane, then select a cell using `[data-cell-address="D12"]`. Duplicate panes have independent view IDs and unique mounted cell IDs. Virtualized grids expose rendered cells; use **Cell address** / **Go to cell** to reveal another address. Headers occupy ARIA row/column 1, so A1 has row/column index 2.

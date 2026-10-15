@@ -15,6 +15,7 @@ import {
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
+  Bug,
   Check,
   ChevronDown,
   Columns2,
@@ -28,6 +29,7 @@ import {
   PanelLeftClose,
   Plus,
   Redo2,
+  RotateCcw,
   Rows2,
   Search,
   Undo2,
@@ -175,6 +177,9 @@ export function App() {
   const [help, setHelp] = useState(false);
   const [maximized, setMaximized] = useState<string | null>(null);
   const [showFormulas, setShowFormulas] = useState(false);
+  // Debug tools are opt-in for this page session, not part of workbook backups.
+  const [debugMode, setDebugMode] = useState(false);
+  const workspaceMenu = useRef<HTMLDetailsElement>(null);
   const [cell, setCell] = useState("A1");
   const [formula, setFormula] = useState("");
   const [formulaDirty, setFormulaDirty] = useState(false);
@@ -520,6 +525,21 @@ export function App() {
           },
         }),
       );
+    } catch (e) {
+      notifyError(e);
+    }
+  };
+  const clearFormulaCache = () => {
+    if (!ready || busy || !books.length) return;
+    try {
+      // Keep the engine, workbooks, history, and mounted spreadsheet views intact.
+      // The API notifies subscribers; visible cells then recalculate on demand.
+      engine.clearCache();
+      setNotice({
+        kind: "info",
+        message:
+          "Formula cache cleared. Results recalculate on demand; workbook data and undo history are unchanged.",
+      });
     } catch (e) {
       notifyError(e);
     }
@@ -995,7 +1015,7 @@ export function App() {
                 <ArrowUpFromLine size={15} />
                 Import
               </button>
-              <details className="export-menu">
+              <details className="export-menu" ref={workspaceMenu}>
                 <summary className="button">
                   <ArrowDownToLine size={15} />
                   Workspace
@@ -1009,6 +1029,16 @@ export function App() {
                     Restore workspace backup…
                   </button>
                   <small>Includes all workbooks and pane layout.</small>
+                  <button
+                    aria-pressed={debugMode}
+                    onClick={() => {
+                      setDebugMode((enabled) => !enabled);
+                      if (workspaceMenu.current)
+                        workspaceMenu.current.open = false;
+                    }}
+                  >
+                    Debug mode{debugMode ? " · on" : " · off"}
+                  </button>
                 </div>
               </details>
             </div>
@@ -1016,6 +1046,34 @@ export function App() {
           <div className="workspace-subtitle">
             A little room for your big ideas. Arrange, connect, and calculate.
           </div>
+          {debugMode && (
+            <section className="debug-panel" aria-label="Debug tools">
+              <div className="debug-description">
+                <strong>
+                  <Bug size={15} /> Debug mode
+                </strong>
+                <span>
+                  Clear cached calculations across all workbooks without
+                  changing data or undo history.
+                </span>
+              </div>
+              <button
+                className="button"
+                onClick={clearFormulaCache}
+                disabled={!ready || busy || !books.length}
+                title="Recalculate results on demand. Does not clear browser storage or reload workbooks."
+              >
+                <RotateCcw size={15} />
+                Clear formula cache
+              </button>
+              <IconButton
+                label="Disable debug mode"
+                onClick={() => setDebugMode(false)}
+              >
+                <X size={16} />
+              </IconButton>
+            </section>
+          )}
           <div className="command-bar">
             <div className="history-controls">
               <IconButton
@@ -1286,6 +1344,13 @@ export function App() {
             Autosave uses IndexedDB on this browser. Workspace backups preserve
             every workbook and layout. Workbook exports are formula-engine JSON,
             not Excel files. Restore asks before replacing your workspace.
+          </p>
+          <h3>Debug tools</h3>
+          <p>
+            Turn on Debug mode in the Workspace menu to clear the formula engine
+            cache. Results recalculate on demand without reloading workbooks or
+            resetting undo history. Debug mode turns off when you reload the
+            page.
           </p>
           <h3>Browser automation</h3>
           <p>

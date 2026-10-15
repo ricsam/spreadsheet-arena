@@ -555,6 +555,34 @@ a {
   font-size: 9px;
   border-top: 1px solid var(--line);
 }
+.debug-panel {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  flex-shrink: 0;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e8d6a6;
+  border-radius: 8px;
+  background: #fffaed;
+  color: #6b531b;
+}
+.debug-description {
+  flex: 1 1 240px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.debug-description strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+.debug-panel .button,
+.debug-panel .icon-button {
+  color: #6b531b;
+}
 .command-bar {
   height: 39px;
   display: flex;
