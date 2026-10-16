@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { save } from "./save";
 
 test("formula-first shell, resizable sidebars, and persistent dark theme", async ({
   page,
@@ -70,9 +71,7 @@ test("formula-first shell, resizable sidebars, and persistent dark theme", async
     "background-color",
     "rgb(23, 26, 30)",
   );
-  await expect(
-    page.getByRole("status").filter({ hasText: "Saved on this device" }),
-  ).toBeVisible();
+  await save(page);
   await page.reload();
   await expect(page.locator("html")).toHaveClass(/dark/);
   await expect(left).toHaveAttribute("aria-valuenow", String(before + 8));

@@ -31,6 +31,7 @@ import {
   RotateCcw,
   Rows2,
   Search,
+  Save,
   Undo2,
   X,
 } from "lucide-react";
@@ -176,14 +177,30 @@ function PromptDialog({
   );
 }
 
+function hasInspectorDraft() {
+  const input = document.activeElement;
+  return (
+    input instanceof HTMLInputElement &&
+    Boolean(input.closest(".workbook-inspector")) &&
+    input.value !== input.defaultValue
+  );
+}
+
 export function App() {
   const [engine, setEngine] = useState(() => FormulaEngine.buildEmpty());
   const [storedLayout, setLayout] = useState<Layout | null>(null);
   const [activePaneId, setActivePaneId] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
   const [ready, setReady] = useState(false);
-  const [saving, setSaving] = useState("Opening workspace…");
-  const [autosave, setAutosave] = useState(true);
+  const [saveInProgress, setSaveInProgress] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+  const [storageAvailable, setStorageAvailable] = useState(true);
+  const [includeEvaluationState, setIncludeEvaluationState] = useState(false);
+  const [savedState, setSavedState] = useState<{
+    engine: FormulaEngine;
+    revision: number;
+    viewKey: string;
+  } | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -211,11 +228,13 @@ export function App() {
   const formulaInput = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
   const importInFlight = useRef(false);
-  const saveGeneration = useRef(0);
+  const saveLocked = useRef(false);
+  const loadedBaseline = useRef(false);
+  const saveDialog = useRef<HTMLDialogElement>(null);
   const [workspaceWriter, setWorkspaceWriter] = useState(createWorkspaceWriter);
   const selection = useMemo(() => new WorkbookSelectionManager(), [engine]);
   const clipboard = useMemo(
-    () => new WorkspaceClipboardManager(engine),
+    () => new WorkspaceClipboardManager(engine, () => saveLocked.current),
     [engine],
   );
   // Engine updates are synchronous, but effects run after render. Reconcile
@@ -247,13 +266,8 @@ export function App() {
         const saved = loaded?.snapshot;
         if (cancelled) return;
         if (saved) {
-          setWorkspaceWriter(
-            createWorkspaceWriter(loaded!.storageToken, false, {
-              engine: loaded!.engine,
-              revision: 0,
-              serialized: saved.engine,
-            }),
-          );
+          setWorkspaceWriter(createWorkspaceWriter(loaded!.storageToken));
+          loadedBaseline.current = true;
           setEngine(loaded!.engine);
           setLayout(saved.layout);
           setActivePaneId(saved.activePaneId);
@@ -291,9 +305,8 @@ export function App() {
       })
       .catch((e) => {
         if (!cancelled) {
-          setAutosave(false);
+          setStorageAvailable(false);
           setReady(true);
-          setSaving("Autosave unavailable");
           notifyError(
             `Could not restore local data. It has not been overwritten. ${e.message}`,
           );
@@ -317,54 +330,123 @@ export function App() {
   }, []);
 
   useEffect(() => engine.onUpdate(() => setRevision((r) => r + 1)), [engine]);
-  useEffect(() => {
-    if (!ready || !autosave) return;
-    const generation = ++saveGeneration.current;
-    setSaving("Saving…");
-    const timer = setTimeout(() => {
-      try {
-        const state = {
-          layout,
-          activePaneId: active?.id ?? null,
-          view: {
-            sidebar,
-            showFormulas,
-            maximized: panes(layout).some((p) => p.id === maximized)
-              ? maximized
-              : null,
-          },
-        };
-        workspaceWriter
-          .save(engine, revision, state)
-          .then(() => {
-            if (generation === saveGeneration.current)
-              setSaving("Saved on this device");
-          })
-          .catch((e) => {
-            setSaving("Not saved");
-            notifyError(
-              `Local save failed. Download a workspace backup. ${e.message}`,
-            );
-          });
-      } catch (e) {
-        setSaving("Not saved");
-        notifyError(e);
-      }
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [
-    engine,
-    revision,
+  const workspaceView = {
     layout,
-    active?.id,
-    ready,
-    autosave,
-    notifyError,
-    sidebar,
-    showFormulas,
-    maximized,
-    workspaceWriter,
-  ]);
+    activePaneId: active?.id ?? null,
+    view: {
+      sidebar,
+      showFormulas,
+      maximized: allPanes.some((p) => p.id === maximized) ? maximized : null,
+    },
+  };
+  // Small view metadata only: never serialize engine data to detect dirty state.
+  const viewKey = JSON.stringify(workspaceView);
+  useEffect(() => {
+    if (ready && loadedBaseline.current) {
+      loadedBaseline.current = false;
+      setSavedState({ engine, revision, viewKey });
+    }
+  }, [ready, engine, revision, viewKey]);
+  const unsaved =
+    !savedState ||
+    savedState.engine !== engine ||
+    savedState.revision !== revision ||
+    savedState.viewKey !== viewKey;
+  const saving = saveInProgress
+    ? "Saving…"
+    : !storageAvailable
+      ? "Saving unavailable"
+      : saveError
+        ? "Save failed — unsaved changes"
+        : unsaved || formulaDirty
+          ? "Unsaved changes"
+          : "Saved on this device";
+  const isLocked = useCallback(() => saveLocked.current, []);
+  const saveWorkspace = async () => {
+    if (
+      saveLocked.current ||
+      importInFlight.current ||
+      !ready ||
+      !storageAvailable ||
+      dialog
+    )
+      return;
+    const editing =
+      selection.getLastFocusedSelectionManager()?.sm.isEditing.type ?? "none";
+    if (formulaDirty || editing !== "none" || hasInspectorDraft()) {
+      notifyError(
+        "Apply or cancel the cell edit before saving (Enter or Escape).",
+      );
+      return;
+    }
+    saveLocked.current = true;
+    setSaveInProgress(true);
+    setSaveError(false);
+    try {
+      // Paint the lock/notice first. Serialization is deliberately synchronous;
+      // the lock remains in force until the atomic IndexedDB write completes.
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => setTimeout(resolve, 0)),
+      );
+      await workspaceWriter.save(engine, workspaceView, {
+        includeEvaluationState,
+      });
+      setSavedState({ engine, revision, viewKey });
+    } catch (error) {
+      setSaveError(true);
+      notifyError(
+        `Local save failed. Your changes are still open; retry or download a backup. ${error instanceof Error ? error.message : error}`,
+      );
+    } finally {
+      saveLocked.current = false;
+      setSaveInProgress(false);
+    }
+  };
+  useEffect(() => {
+    if (saveInProgress) saveDialog.current?.showModal();
+  }, [saveInProgress]);
+  useEffect(() => {
+    const keys = (event: KeyboardEvent) => {
+      if (saveLocked.current) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      } else if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === "s" &&
+        !event.altKey
+      ) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        void saveWorkspace();
+      }
+    };
+    const block = (event: Event) => {
+      if (saveLocked.current) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    };
+    window.addEventListener("keydown", keys, true);
+    const events = [
+      "pointerdown",
+      "pointerup",
+      "pointermove",
+      "mousedown",
+      "mouseup",
+      "mousemove",
+      "click",
+      "keyup",
+      "paste",
+      "cut",
+      "drop",
+      "beforeinput",
+    ];
+    events.forEach((name) => window.addEventListener(name, block, true));
+    return () => {
+      window.removeEventListener("keydown", keys, true);
+      events.forEach((name) => window.removeEventListener(name, block, true));
+    };
+  });
 
   useEffect(
     () =>
@@ -387,10 +469,14 @@ export function App() {
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
       if (
-        saving === "Saving…" ||
-        saving === "Not saved" ||
+        saveLocked.current ||
+        unsaved ||
+        saveError ||
         formulaDirty ||
-        busy
+        hasInspectorDraft() ||
+        busy ||
+        (selection.getLastFocusedSelectionManager()?.sm.isEditing.type ??
+          "none") !== "none"
       ) {
         event.preventDefault();
         event.returnValue = "";
@@ -398,7 +484,7 @@ export function App() {
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [saving, formulaDirty, busy]);
+  }, [unsaved, saveError, formulaDirty, busy, selection]);
 
   const raw = active
     ? textValue(engine.getSheet(active)?.content.get(active.cell ?? "A1"))
@@ -470,6 +556,8 @@ export function App() {
 
   const createBook = useCallback(
     (name: string) => {
+      if (saveLocked.current)
+        throw new Error("Saving in progress. Editing is temporarily disabled.");
       if (!name.trim()) throw new Error("Give your workbook a name.");
       if (panes(layout).length >= 8)
         throw new Error("Close a pane before creating another workbook.");
@@ -480,13 +568,17 @@ export function App() {
     [engine, openBook, layout],
   );
 
+  // File parsing is asynchronous; open its result against the latest pane layout.
+  const importTarget = useRef({ openBook, paneCount: allPanes.length });
+  importTarget.current = { openBook, paneCount: allPanes.length };
   const importDropped = async (files: File[]) => {
-    if (importInFlight.current || !files.length) return;
+    if (saveLocked.current || importInFlight.current || !files.length) return;
     importInFlight.current = true;
     setBusy(true);
     try {
       const result = await importFiles(engine, files);
-      if (result.names.length && allPanes.length < 8) openBook(result.names[0]);
+      if (result.names.length && importTarget.current.paneCount < 8)
+        importTarget.current.openBook(result.names[0]);
       else if (result.names.length)
         result.warnings.push(
           "All eight panes are in use. Close a pane, then open the imported workbook from the sidebar.",
@@ -546,7 +638,7 @@ export function App() {
     }
   };
   const clearFormulaCache = () => {
-    if (!ready || busy || !books.length) return;
+    if (saveLocked.current || !ready || busy || !books.length) return;
     try {
       // Keep the engine, workbooks, history, and mounted spreadsheet views intact.
       // The API notifies subscribers; visible cells then recalculate on demand.
@@ -561,7 +653,7 @@ export function App() {
     }
   };
   const commitFormula = () => {
-    if (!active) return;
+    if (saveLocked.current || !active) return;
     try {
       engine.setCellContent(
         cellAddress(active.workbookName, active.sheetName, active.cell ?? "A1"),
@@ -579,6 +671,7 @@ export function App() {
       registerArenaTools({
         engine,
         layout,
+        isLocked,
         activePaneId: active?.id ?? null,
         createWorkbook: createBook,
         focusCell: (workbookName, sheetName, address) => {
@@ -587,7 +680,16 @@ export function App() {
           return { selected: address };
         },
       }),
-    [engine, layout, active?.id, createBook, openBook, focusCell, patchPane],
+    [
+      engine,
+      layout,
+      active?.id,
+      createBook,
+      openBook,
+      focusCell,
+      patchPane,
+      isLocked,
+    ],
   );
 
   if (!ready)
@@ -813,7 +915,11 @@ export function App() {
         Skip to workspace
       </a>
 
-      <div className="app-body">
+      <div
+        className="app-body"
+        inert={saveInProgress}
+        aria-busy={saveInProgress}
+      >
         {sidebar && (
           <ResizableSidebar
             side="left"
@@ -1115,6 +1221,28 @@ export function App() {
             role="toolbar"
             aria-label="Workbook actions"
           >
+            <div className="save-controls">
+              <Button
+                size="sm"
+                onClick={() => void saveWorkspace()}
+                disabled={saveInProgress || busy || !storageAvailable}
+                title="Save workspace on this device (Ctrl/Cmd+S)"
+              >
+                <Save size={15} /> Save
+              </Button>
+              <select
+                aria-label="Save contents"
+                value={includeEvaluationState ? "warm" : "compact"}
+                disabled={saveInProgress}
+                onChange={(event) =>
+                  setIncludeEvaluationState(event.target.value === "warm")
+                }
+              >
+                <option value="compact">Workbook only (no cache)</option>
+                <option value="warm">Workbook + calculation cache</option>
+              </select>
+            </div>
+            <span className="toolbar-divider" />
             <div className="history-controls">
               <IconButton
                 label="Undo"
@@ -1137,6 +1265,7 @@ export function App() {
               selection={selection}
               clipboard={clipboard}
               active={active}
+              isLocked={isLocked}
               onError={notifyError}
             />
             <span className="toolbar-divider" />
@@ -1145,6 +1274,7 @@ export function App() {
               selection={selection}
               active={active}
               revision={revision}
+              isLocked={isLocked}
               onError={notifyError}
             />
             <span className="toolbar-divider" />
@@ -1309,6 +1439,7 @@ export function App() {
               selection={selection}
               active={active}
               revision={revision}
+              isLocked={isLocked}
               onError={notifyError}
             />
           </ResizableSidebar>
@@ -1319,6 +1450,7 @@ export function App() {
         type="file"
         className="sr-only"
         aria-label="Import workbook files"
+        disabled={saveInProgress || busy}
         multiple
         accept=".xlsx,.xlsm,.csv,.tsv,.json"
         onChange={(event) => {
@@ -1331,11 +1463,14 @@ export function App() {
         type="file"
         className="sr-only"
         aria-label="Restore workspace file"
+        disabled={saveInProgress || busy}
         accept=".json"
         onChange={async (event) => {
           const file = event.target.files?.[0];
           event.target.value = "";
-          if (!file) return;
+          if (!file || saveLocked.current || importInFlight.current) return;
+          importInFlight.current = true;
+          setBusy(true);
           try {
             if (file.size > MAX_WORKSPACE_FILE_BYTES)
               throw new Error(
@@ -1347,9 +1482,10 @@ export function App() {
             setDialog({
               title: "Restore workspace?",
               description:
-                "This replaces all current workbooks and pane layout. Download a backup of this workspace first if you want to keep it.",
+                "This replaces the open workbooks and pane layout, discarding unsaved changes. Download a backup first if needed. Use Save afterwards to replace the saved workspace on this device.",
               action: () => {
-                // Replacement is explicit and user-confirmed; normal autosaves use CAS.
+                if (saveLocked.current) throw new Error("Saving in progress.");
+                // Replacement is explicit and user-confirmed; subsequent saves use CAS.
                 setWorkspaceWriter(createWorkspaceWriter(null, true));
                 setEngine(restoredEngine);
                 setLayout(snapshot.layout);
@@ -1357,14 +1493,38 @@ export function App() {
                 setMaximized(snapshot.view?.maximized ?? null);
                 setSidebar(snapshot.view?.sidebar ?? true);
                 setShowFormulas(snapshot.view?.showFormulas ?? false);
-                setAutosave(true);
+                setSavedState(null);
+                setSaveError(false);
+                setStorageAvailable(true);
               },
             });
           } catch (e) {
             notifyError(e);
+          } finally {
+            importInFlight.current = false;
+            setBusy(false);
           }
         }}
       />
+      {saveInProgress && (
+        <dialog
+          ref={saveDialog}
+          aria-labelledby="save-title"
+          onCancel={(event) => event.preventDefault()}
+        >
+          <h2 id="save-title">Saving workspace…</h2>
+          <p role="status">
+            Editing is temporarily disabled. Keep this tab open until saving
+            finishes.
+          </p>
+          <p>
+            {includeEvaluationState
+              ? "Including warm calculation cache."
+              : "Saving workbook data without calculation cache."}{" "}
+            Large workspaces may briefly pause the browser.
+          </p>
+        </dialog>
+      )}
       {dragging && (
         <div className="drop-overlay">
           <ArrowUpFromLine size={42} />
@@ -1404,9 +1564,12 @@ export function App() {
           </p>
           <h3>Keep a copy</h3>
           <p>
-            Autosave uses IndexedDB on this browser. Workspace backups preserve
-            every workbook and layout. Workbook exports are formula-engine JSON,
-            not Excel files. Restore asks before replacing your workspace.
+            Use Save or Ctrl/Cmd+S to save all workbooks and layout on this
+            device. Changes are not saved automatically. Workbook-only saves are
+            smaller; formulas recalculate after reopening. Include calculation
+            cache for a larger snapshot that can reopen faster. Editing is
+            locked while saving, and large saves may pause the browser. Download
+            backups separately; workbook exports are JSON, not Excel files.
           </p>
           <h3>Debug tools</h3>
           <p>

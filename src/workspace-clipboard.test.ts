@@ -44,6 +44,26 @@ function setup() {
   return { engine, clipboard };
 }
 describe("workspace clipboard", () => {
+  it("blocks clipboard mutation callbacks while a save lock is held", () => {
+    const { engine } = setup();
+    let locked = false;
+    const clipboard = new WorkspaceClipboardManager(engine, () => locked);
+    clipboard.copyRanges([range("Source")]);
+    locked = true;
+    clipboard.pasteRanges([range("Target", 2, 2)]);
+    expect(
+      engine
+        .getSheet({ workbookName: "Target", sheetName: "Sheet1" })!
+        .content.get("C3"),
+    ).toBe(99);
+    locked = false;
+    clipboard.pasteRanges([range("Target", 2, 2)]);
+    expect(
+      engine
+        .getSheet({ workbookName: "Target", sheetName: "Sheet1" })!
+        .content.get("C3"),
+    ).toBe(3);
+  });
   it("copies a blank styled cell and clears a strongly styled destination with plain source", () => {
     const { engine, clipboard } = setup();
     const dest = {

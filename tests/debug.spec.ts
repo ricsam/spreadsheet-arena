@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { FormulaEngine } from "@ricsam/formula-engine";
 import { makeSnapshot } from "../src/model";
+import { save } from "./save";
 
 const gridCell = (page: Page, grid: string, address: string) =>
   page
@@ -8,8 +9,6 @@ const gridCell = (page: Page, grid: string, address: string) =>
     .locator(`[data-cell-address="${address}"]`);
 const formulaBar = (page: Page) =>
   page.getByRole("textbox", { name: "Cell value or formula", exact: true });
-const saved = (page: Page) =>
-  page.getByRole("status").filter({ hasText: "Saved on this device" });
 async function enableDebug(page: Page) {
   await expect(page.getByRole("main")).toBeVisible();
   const showSidebar = page.getByRole("button", {
@@ -95,7 +94,7 @@ test("debug cache clearing preserves panes, selection, drafts, content and undo/
   await page.getByRole("button", { name: "Undo", exact: true }).click();
   await expect(total).toHaveText("7,535");
   await page.getByRole("button", { name: "Redo", exact: true }).click();
-  await expect(saved(page)).toBeVisible();
+  await save(page);
   await page.reload();
   await expect(total).toHaveText("12,375");
   await expect(input).toHaveText("100");
@@ -164,7 +163,8 @@ test("clear cache replaces stale restored calculations and refreshes mounted cel
   await expect(result).toHaveText("42");
   await expect(formulaBar(page)).toHaveValue("=A1*2");
   await expect(gridCell(page, "Cache test, Sheet1", "A1")).toHaveText("21");
-  await expect(saved(page)).toBeVisible();
+  await page.getByLabel("Save contents", { exact: true }).selectOption("warm");
+  await save(page);
   await page.reload();
   await expect(result).toHaveText("42");
   await gridCell(page, "Cache test, Sheet1", "A1").click();

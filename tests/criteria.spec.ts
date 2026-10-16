@@ -1,13 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
 import { FormulaEngine } from "@ricsam/formula-engine";
 import { makeSnapshot } from "../src/model";
+import { save } from "./save";
 
 const grid = (page: Page, sheet: string) =>
   page.getByRole("grid", { name: `Blank criteria, ${sheet}`, exact: true });
 const cell = (page: Page, sheet: string, address: string) =>
   grid(page, sheet).locator(`[data-cell-address="${address}"]`);
-const saved = (page: Page) =>
-  page.getByRole("status").filter({ hasText: "Saved on this device" });
 
 async function expectSummary(
   page: Page,
@@ -116,7 +115,8 @@ test("empty criteria survive sheet switches, edits, undo, cache clearing and rel
     page.getByRole("status").filter({ hasText: "Formula cache cleared." }),
   ).toBeVisible();
   await expectSummary(page, "150", "50", "3");
-  await expect(saved(page)).toBeVisible();
+  await page.getByLabel("Save contents", { exact: true }).selectOption("warm");
+  await save(page);
   await page.reload();
   await expectSummary(page, "150", "50", "3");
 

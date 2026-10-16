@@ -1,9 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
 import { FormulaEngine } from "@ricsam/formula-engine";
 import { makeSnapshot } from "../src/model";
+import { save } from "./save";
 
-const saved = (page: Page) =>
-  page.getByRole("status").filter({ hasText: "Saved on this device" });
 const book = (page: Page, name: string) =>
   page.getByRole("button", { name: `Open ${name}`, exact: true });
 const grid = (page: Page, name: string) =>
@@ -72,7 +71,7 @@ test("remove the last imported workbook, persist an empty workspace, and create 
   await expect(
     page.getByRole("button", { name: "Split active pane right" }),
   ).toBeDisabled();
-  await expect(saved(page)).toBeVisible();
+  await save(page);
   await page.reload();
   await expect(
     page.getByRole("button", { name: "Create a workbook", exact: true }),
@@ -127,7 +126,7 @@ test("remove active maximized duplicate panes, undo and redo without losing othe
   await page.getByRole("button", { name: "Redo", exact: true }).click();
   await expect(book(page, "Assumptions")).toHaveCount(0);
   await expect(page.getByRole("grid")).toHaveCount(1);
-  await expect(saved(page)).toBeVisible();
+  await save(page);
   await page.reload();
   await expect(grid(page, "Launch budget, Overview")).toBeVisible();
   await expect(book(page, "Assumptions")).toHaveCount(0);
@@ -146,7 +145,7 @@ test("remove an inactive open workbook without disrupting the active pane", asyn
   await remove(page, "Launch budget");
   await expect(grid(page, "Assumptions, Inputs")).toBeVisible();
   await expect(formulaBar(page)).toHaveValue("45");
-  await expect(saved(page)).toBeVisible();
+  await save(page);
   await page.reload();
   await expect(formulaBar(page)).toHaveValue("45");
   await expect(book(page, "Launch budget")).toHaveCount(0);
@@ -174,6 +173,6 @@ test("undoing sheet and workbook creation reconciles panes before rendering", as
   await page.getByRole("button", { name: "Undo", exact: true }).click();
   await expect(book(page, "Temporary")).toHaveCount(0);
   await expect(page.getByRole("grid")).toHaveCount(2);
-  await expect(saved(page)).toBeVisible();
+  await save(page);
   expect(errors).toEqual([]);
 });

@@ -11,12 +11,14 @@ export interface FormattingProps {
   selection: WorkbookSelectionManager;
   active?: Pane;
   revision: number;
+  isLocked?: () => boolean;
   onError: (error: unknown) => void;
 }
 export function StyleActions({
   engine,
   selection,
   active,
+  isLocked = () => false,
   onError,
 }: FormattingProps) {
   const areas = useActiveSelection(selection, active);
@@ -25,7 +27,7 @@ export function StyleActions({
   const disabled = !active || !areas.length;
   const run = (action: () => void) => {
     try {
-      action();
+      if (!isLocked()) action();
     } catch (error) {
       onError(error);
     }

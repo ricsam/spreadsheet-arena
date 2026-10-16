@@ -4,11 +4,12 @@ import { arenaTools } from "./webmcp";
 import { createEmptyWorkbook } from "./model";
 import { cellAddress, parseInput } from "./cells";
 
-function setup() {
+function setup(isLocked?: () => boolean) {
   const engine = FormulaEngine.buildEmpty();
   createEmptyWorkbook(engine, "Book");
   const tools = arenaTools({
     engine,
+    isLocked,
     layout: null,
     activePaneId: null,
     createWorkbook: (name) => createEmptyWorkbook(engine, name),
@@ -113,6 +114,23 @@ describe("automation contracts", () => {
         (await call("create_workbook", { name: "New" })).content[0].text,
       ).workbook,
     ).toBe("New");
+  });
+  it("checks the live save lock even for previously registered tools", async () => {
+    let locked = true;
+    const { engine, call } = setup(() => locked);
+    const input = { workbook: "Book", sheet: "Sheet1", cell: "A1", value: 9 };
+    expect((await call("set_cell", input)).isError).toBe(true);
+    expect((await call("create_workbook", { name: "Blocked" })).isError).toBe(
+      true,
+    );
+    expect((await call("select_cell", input)).isError).toBe(true);
+    expect(
+      (await call("read_cells", { ...input, cells: ["A1"] })).isError,
+    ).toBe(true);
+    expect(engine.getWorkbooks().size).toBe(1);
+    locked = false;
+    expect((await call("set_cell", input)).isError).toBeUndefined();
+    expect(engine.getCellValue(cellAddress("Book", "Sheet1", "A1"))).toBe(9);
   });
   it("marks only nonmutating tools read-only", () => {
     expect(

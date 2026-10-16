@@ -52,7 +52,7 @@ export function WorkbookInspector(props: FormattingProps) {
   const disabled = !active || !areas.length;
   const run = (action: () => void) => {
     try {
-      action();
+      if (!props.isLocked?.()) action();
     } catch (error) {
       onError(error);
     }

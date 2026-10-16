@@ -11,7 +11,9 @@ A local-first workspace for connected spreadsheets.
 - Arrange up to eight workbook views in nested horizontal/vertical splits. Drag a divider, use its arrow keys, or double-click it to reset. Maximize, restore, and close panes without deleting their workbooks.
 - Edit cells directly or in the formula bar; jump to an A1 address; use range selection, copy/paste, undo/redo, and per-pane zoom.
 - Export one workbook as native formula-engine JSON, or download a **workspace backup** containing all workbooks and layout. Importing JSON adds workbooks; restoring a workspace explicitly confirms replacement.
-- Autosave to IndexedDB: workbook contents, styles/metadata, column/row sizes, pane layout, active sheets/cells, zoom, sidebar, formula display, and maximized pane. Selection/view changes save only small UI state; workbook edits save in atomic chunks only after content changes. Warm calculation state is retained for faster reopening rather than forcing a cold rebuild. Undo history and transient dialogs/drafts are intentionally not persisted.
+- **Manual save** to IndexedDB with **Save** or **Ctrl/Cmd+S**: workbook contents, styles/metadata, column/row sizes, pane layout, active sheets/cells, zoom, sidebar, formula display, and maximized pane. Edits, navigation, imports and restored backups are **not saved automatically**. Undo history and transient dialogs/drafts are not persisted.
+- Choose **Workbook only (no cache)** (default) for a smaller snapshot, or **Workbook + calculation cache** to retain warm results for faster reopening. Workbook-only reloads recalculate formulas on demand; neither mode changes formulas or source data. Save captures the chosen mode afresh, even without a new edit.
+- Editing and workspace controls are locked while saving. Serialization is synchronous and can pause the browser for large workspaces; a notice is shown first. Keep the tab open until it says **Saved on this device**. Apply/cancel a cell draft before saving.
 
 Two small connected example workbooks appear on first launch. Edit the assumptions to see the launch budget recalculate.
 
@@ -19,7 +21,7 @@ Two small connected example workbooks appear on first launch. Edit the assumptio
 
 There is no application backend, login, telemetry, or workbook upload service. Fonts and code are served with the app. GitHub Pages receives normal requests for application assets, not workbook contents. WebMCP-capable browser agents can access workbook data when invoked by the user.
 
-Browser storage is **not a backup**. Clearing site data, private browsing, storage eviction or changing browser/device can lose data. Download workspace backups for anything important. Saving errors are visible; an unreadable saved workspace is preserved rather than overwritten with fresh data. Close/reload while a save or formula edit is pending prompts a warning where supported. Multiple tabs do not collaborate or merge edits; use one tab per workspace. Autosave detects intervening content saves from another updated tab and asks you to download your changes before reloading instead of silently overwriting it. Older app versions cannot participate in this protection; close old tabs before upgrading.
+Browser storage is **not a backup**. Clearing site data, private browsing, storage eviction or changing browser/device can lose data. Download workspace backups for anything important. Saving errors are visible; an unreadable saved workspace is preserved rather than overwritten with fresh data. Unsaved workbook/layout changes, active cell drafts, imports and in-progress saves trigger a close/reload warning where supported. A failed save keeps edits open and unsaved for retry; downloading a backup does not mark the local workspace saved. Multiple tabs do not collaborate or merge edits; use one tab per workspace. Manual save detects intervening saves from another updated tab and asks you to download your changes before reloading instead of silently overwriting it. Older app versions cannot participate in this protection; close old tabs before upgrading.
 
 ## Import and export
 
@@ -49,7 +51,7 @@ Browsers exposing `navigator.modelContext` register these WebMCP tools:
 | `set_cell`        | Edit a typed value or formula; `null` clears                 |
 | `create_workbook` | Create a blank workbook                                      |
 
-Mutation tools require the invoking agent to obtain user authorization; tool descriptions do not grant it. Workbook contents are untrusted data. No hidden global engine/debug API is exposed. Browsers without WebMCP retain the complete labelled UI. WebMCP registration and execution contracts are tested using a browser API test double; native protocol availability depends on the browser. A full screen-reader audit has not been performed.
+Tools are temporarily unavailable while saving (including reads that could populate calculation caches). Mutation tools require the invoking agent to obtain user authorization; tool descriptions do not grant it. Workbook contents are untrusted data. No hidden global engine/debug API is exposed. Browsers without WebMCP retain the complete labelled UI. WebMCP registration and execution contracts are tested using a browser API test double; native protocol availability depends on the browser. A full screen-reader audit has not been performed.
 
 ## Develop
 
@@ -70,7 +72,7 @@ The pinned spreadsheet libraries include indexed style lookup, selection-only re
 ### Architecture
 
 - `src/model.ts`: validated snapshots, staged imports, export filtering, immutable split tree.
-- `src/persistence.ts`: revision-aware ordered/chunked IndexedDB writes, atomic content/view commits, conflict detection, and errors without silent fallback.
+- `src/persistence.ts`: explicit warm/compact snapshots, ordered/chunked IndexedDB writes, atomic content/view commits, conflict detection, and errors without silent fallback.
 - `src/App.tsx` / `src/Tiles.tsx`: shared engine/selection/clipboard and tiled UI.
 - `src/webmcp.ts`: bounded, validated automation tools with read/mutation distinctions.
 - `src/cells.ts`: cell addressing and formula-bar value parsing.

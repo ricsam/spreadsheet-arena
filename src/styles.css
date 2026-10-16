@@ -425,6 +425,21 @@
   .command-bar > * {
     flex-shrink: 0;
   }
+  .save-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .save-controls select {
+    max-width: 205px;
+    height: 32px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0 6px;
+    color: var(--foreground);
+    background: var(--background);
+    font-size: 12px;
+  }
   .history-controls {
     display: flex;
     gap: 1px;
@@ -868,11 +883,13 @@
       min-width: 550px;
     }
     .workspace-status > span:first-child {
-      flex: 1;
-      font-size: 9px;
+      display: none;
     }
     .workspace-status > span:last-child {
-      display: none;
+      display: inline-flex;
+      font-size: 10px;
+      flex: 1;
+      justify-content: flex-end;
     }
     .collapsed-sidebar-actions {
       margin-left: auto;

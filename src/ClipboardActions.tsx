@@ -23,12 +23,14 @@ export function ClipboardActions({
   selection,
   clipboard,
   active,
+  isLocked = () => false,
   onError,
 }: {
   engine: FormulaEngine;
   selection: WorkbookSelectionManager;
   clipboard: WorkspaceClipboardManager;
   active?: Pane;
+  isLocked?: () => boolean;
   onError: (error: unknown) => void;
 }) {
   const ranges = useActiveSelection(selection, active);
@@ -39,7 +41,7 @@ export function ClipboardActions({
   );
   const run = (action: () => void) => {
     try {
-      action();
+      if (!isLocked()) action();
     } catch (error) {
       onError(error);
     }
@@ -48,16 +50,18 @@ export function ClipboardActions({
     // Capture the target before the asynchronous OS read; do not refocus a stale view.
     const targets = ranges;
     try {
-      if (!targets.length) return;
+      if (isLocked() || !targets.length) return;
       let text: string;
       try {
         text = await navigator.clipboard.readText();
       } catch (error) {
         // Internal copy remains usable when the browser denies clipboard access.
+        if (isLocked()) return;
         if (!clipboard.hasContent) throw error;
         clipboard.pasteRanges(targets, formatting);
         return;
       }
+      if (isLocked()) return;
       if (clipboard.hasContent && text === clipboard.signature) {
         clipboard.pasteRanges(targets, formatting);
         return;

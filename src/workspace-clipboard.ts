@@ -43,7 +43,10 @@ export class WorkspaceClipboardManager extends WorkbookClipboardManager {
   private snapshot?: string;
   private listeners = new Set<() => void>();
   private version = 0;
-  constructor(private readonly workspaceEngine: FormulaEngine) {
+  constructor(
+    private readonly workspaceEngine: FormulaEngine,
+    private readonly isLocked: () => boolean = () => false,
+  ) {
     super(workspaceEngine);
   }
   subscribe = (listener: () => void) => {
@@ -58,6 +61,7 @@ export class WorkspaceClipboardManager extends WorkbookClipboardManager {
   }
 
   override triggerCopy(context: CopyContext): void {
+    if (this.isLocked()) return;
     const sheet = this.workspaceEngine.getSheet(context);
     if (!sheet) return;
     const area = context.selectionManager.selections.at(-1);
@@ -154,6 +158,7 @@ export class WorkspaceClipboardManager extends WorkbookClipboardManager {
   }
 
   override triggerPaste(context: PasteContext): void {
+    if (this.isLocked()) return;
     if (this.hasContent && context.rawString === this.signature) {
       this.pasteRanges(
         context.selectionManager.selections.map((range) => ({
@@ -187,7 +192,7 @@ export class WorkspaceClipboardManager extends WorkbookClipboardManager {
     formatting: PasteFormatting = "with-formatting",
     type: "value" | "formula" = "formula",
   ): void {
-    if (!this.snapshot || !ranges.length) return;
+    if (this.isLocked() || !this.snapshot || !ranges.length) return;
     const engine = this.workspaceEngine;
     const source = this.copiedCells;
     let minRow = Infinity,

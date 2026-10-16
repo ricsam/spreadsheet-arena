@@ -204,52 +204,31 @@ export function writeWorkspace(snapshot: WorkspaceSnapshot): Promise<void> {
   }
 }
 
-/** One writer per mounted workspace. Selection changes never serialize/rebuild the engine. */
+/** One writer per mounted workspace; every explicit save captures fresh contents. */
 export function createWorkspaceWriter(
   initialToken: StorageToken = null,
   replace = false,
-  initial?: { engine: FormulaEngine; revision: number; serialized: string },
 ) {
-  type Capture = {
-    engine: FormulaEngine;
-    revision: number;
-    serialized: string;
-  };
-  let captured: Capture | undefined = initial;
-  let committed: Capture | undefined =
-    typeof initialToken === "string" && !replace ? initial : undefined;
   let committedId: StorageToken | undefined = replace
     ? undefined
     : initialToken;
   return {
     save(
       engine: FormulaEngine,
-      revision: number,
       state: WorkspaceView,
+      options: { includeEvaluationState: boolean },
     ): Promise<void> {
       try {
         const view = validateWorkspaceView(state, engine);
-        if (
-          !captured ||
-          captured.engine !== engine ||
-          captured.revision !== revision
-        )
-          captured = {
-            engine,
-            revision,
-            // Retain warm calculations so reopening doesn't synchronously rebuild
-            // the entire dependency graph. Only real mutations reach this path.
-            serialized: engine.serializeEngine(),
-          };
-        const content = captured;
+        // Capture synchronously at invocation, before queued writes settle. Both
+        // the detached view and engine bytes belong to this explicit save, even
+        // when only the save mode or the engine's warm caches have changed.
+        const serialized = engine.serializeEngine({
+          includeEvaluationState: options.includeEvaluationState,
+        });
         return enqueue(async () => {
-          // Decide after earlier saves settle; a failed content write is retried.
-          committedId = await persist(
-            view,
-            content === committed ? undefined : content.serialized,
-            committedId,
-          );
-          committed = content;
+          // Advance the expected token only after a successful atomic commit.
+          committedId = await persist(view, serialized, committedId);
         });
       } catch (error) {
         return Promise.reject(error);

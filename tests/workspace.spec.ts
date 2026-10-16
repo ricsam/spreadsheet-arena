@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import ExcelJS from "exceljs";
 import { FormulaEngine } from "@ricsam/formula-engine";
 import { makeSnapshot } from "../src/model";
+import { save } from "./save";
 
 const launch = (page: Page) =>
   page.getByRole("grid", { name: "Launch budget, Overview", exact: true });
@@ -46,9 +47,7 @@ test("connected calculations, native cell editing, undo, and IndexedDB restorati
   await editor.fill("50");
   await editor.press("Enter");
   await expect(gridCell(launch(page), "D12")).toHaveText("7,975");
-  await expect(
-    page.getByRole("status").filter({ hasText: "Saved on this device" }),
-  ).toBeVisible();
+  await save(page);
   await page.reload();
   await expect(gridCell(inputs(page), "B4")).toHaveText("50");
   await expect(gridCell(launch(page), "D12")).toHaveText("7,975");
@@ -89,9 +88,7 @@ test("create workbook and sheets; split, resize, maximize and close without remo
   await expect(
     page.getByRole("button", { name: "Open Planning", exact: true }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("status").filter({ hasText: "Saved on this device" }),
-  ).toBeVisible();
+  await save(page);
   await page.reload();
   await expect(page.getByRole("grid")).toHaveCount(3);
 });
@@ -264,9 +261,7 @@ test("unreadable IndexedDB state is preserved instead of silently replaced", asy
 }) => {
   await page.goto("./");
   await expect(launch(page)).toBeVisible();
-  await expect(
-    page.getByRole("status").filter({ hasText: "Saved on this device" }),
-  ).toBeVisible();
+  await save(page);
   await page.evaluate(async () => {
     await new Promise<void>((resolve, reject) => {
       const request = indexedDB.open("spreadsheet-arena", 1);
@@ -309,14 +304,12 @@ test("unreadable IndexedDB state is preserved instead of silently replaced", asy
   expect(saved).toEqual({ corrupt: "keep me" });
 });
 
-test("navigation persists only view state, while edits replace workbook content", async ({
+test("navigation and edits do not persist until explicitly saved", async ({
   page,
 }) => {
   await page.goto("./");
-  const saved = page
-    .getByRole("status")
-    .filter({ hasText: "Saved on this device" });
-  await expect(saved).toBeVisible();
+  await expect(launch(page)).toBeVisible();
+  await save(page);
   const stored = () =>
     page.evaluate(
       async () =>
@@ -343,12 +336,14 @@ test("navigation persists only view state, while edits replace workbook content"
   await expect(
     page.getByRole("textbox", { name: "Cell address", exact: true }),
   ).toHaveValue("A5");
-  await expect(saved).toBeVisible();
-  const moved = await stored();
-  expect(moved.engineId).toBe(initial.engineId);
+  expect(await stored()).toEqual(initial);
   await editViaBar(page, inputs(page), "B4", "75");
-  await expect(saved).toBeVisible();
-  expect((await stored()).engineId).not.toBe(initial.engineId);
+  await expect(gridCell(inputs(page), "B4")).toHaveText("75");
+  expect(await stored()).toEqual(initial);
+  await save(page);
+  const updated = await stored();
+  expect(updated).not.toEqual(initial);
+  expect(updated.engineId).not.toBe(initial.engineId);
   await page.reload();
   await expect(gridCell(inputs(page), "B4")).toHaveText("75");
 });
@@ -391,9 +386,7 @@ test("restores backups above the old 25 MiB cap and persists content in bounded 
     exact: true,
   });
   await expect(gridCell(grid, "B1")).toHaveText("42");
-  await expect(
-    page.getByRole("status").filter({ hasText: "Saved on this device" }),
-  ).toBeVisible();
+  await save(page);
   await page.reload();
   await expect(gridCell(grid, "A1")).toHaveText("Preserved");
   await expect(gridCell(grid, "B1")).toHaveText("42");
@@ -440,9 +433,7 @@ test("Excel default and inherited fonts match explicit cells and survive reload"
   }
   await expect(gridCell(grid, "B16")).toHaveCSS("font-size", "16px");
   await expect(gridCell(grid, "B16")).toHaveCSS("font-weight", "700");
-  await expect(
-    page.getByRole("status").filter({ hasText: "Saved on this device" }),
-  ).toBeVisible();
+  await save(page);
   await page.reload();
   await expect(gridCell(grid, "B14")).toHaveCSS("font-size", "15px");
   await expect(gridCell(grid, "B16")).toHaveCSS("font-weight", "700");

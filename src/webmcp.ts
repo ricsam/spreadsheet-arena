@@ -15,6 +15,7 @@ type ModelContext = {
 };
 type Actions = {
   engine: FormulaEngine;
+  isLocked?: () => boolean;
   layout: Layout | null;
   activePaneId: string | null;
   createWorkbook: (name: string) => string;
@@ -51,6 +52,10 @@ export function arenaTools(actions: Actions): Tool[] {
     annotations: { readOnlyHint: readOnly },
     execute: async (input) => {
       try {
+        if (actions.isLocked?.())
+          throw new Error(
+            "Saving in progress. Workbook access is temporarily disabled.",
+          );
         return {
           content: [{ type: "text", text: JSON.stringify(run(input)) }],
         };
