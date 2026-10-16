@@ -21,7 +21,7 @@
     "@radix-ui/react-switch": "^1.4.1",
     "@radix-ui/react-tabs": "^1.2.1",
     "@ricsam/excel-to-formula-engine": "0.2.2",
-    "@ricsam/formula-engine": "0.3.6",
+    "@ricsam/formula-engine": "0.3.7",
     "@ricsam/react-spreadsheets": "0.0.14",
     "@ricsam/selection-manager": "0.0.35",
     "class-variance-authority": "^0.7.1",
