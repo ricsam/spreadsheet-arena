@@ -185,8 +185,8 @@
   .library-actions > button {
     flex: 1;
     min-width: 0;
-    padding-inline: 8px;
-    font-size: 11px;
+    padding-inline: 6px;
+    font-size: 12px;
     gap: 5px;
   }
   .search-field {
@@ -195,7 +195,21 @@
     gap: 7px;
     color: var(--muted-foreground);
     margin-top: 16px;
-    padding: 7px;
+    padding: 8px;
+    border: 1px solid var(--input);
+    border-radius: 6px;
+    background: var(--background);
+  }
+  .search-field:focus-within {
+    border-color: var(--ring);
+  }
+  .search-field button {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    min-width: 24px;
+    min-height: 24px;
+    border-radius: 4px;
   }
   .search-field input {
     width: 100%;
@@ -204,20 +218,18 @@
     font-size: 12px;
     color: var(--foreground);
   }
-  .search-field > span {
-    display: none;
-  }
   .library-label {
-    margin: 22px 6px 10px;
-    font-size: 10px;
-    letter-spacing: 1px;
+    margin: 24px 6px 10px;
+    font-size: 12px;
+    letter-spacing: 0;
     color: var(--muted-foreground);
-    font-weight: 500;
+    font-weight: 600;
     display: flex;
     justify-content: space-between;
   }
   .library-label span {
-    font-size: 10px;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
     min-width: 18px;
     text-align: center;
     letter-spacing: 0;
@@ -260,26 +272,19 @@
     background: color-mix(in srgb, var(--primary) 12%, var(--background));
     color: var(--primary);
   }
-  .tone-1 {
-    color: #a58c4f;
-    background: color-mix(in srgb, #a58c4f 12%, var(--background));
-  }
-  .tone-2 {
-    color: #7c8fbb;
-    background: color-mix(in srgb, #7c8fbb 12%, var(--background));
-  }
   .book-name {
     flex: 1;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     font-weight: 600;
-    font-size: 12px;
+    font-size: 13px;
+    white-space: nowrap;
   }
   .book-name small {
     display: block;
     color: var(--muted-foreground);
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 400;
     margin-top: 3px;
   }
@@ -291,12 +296,16 @@
   .book-sheets button {
     display: flex;
     gap: 9px;
-    font-size: 11px;
+    font-size: 12px;
     color: var(--muted-foreground);
     align-items: center;
     width: 100%;
     text-align: left;
-    padding: 6px 0;
+    padding: 7px 0;
+    overflow-wrap: anywhere;
+  }
+  .book-sheets svg {
+    flex-shrink: 0;
   }
   .book-sheets button.selected {
     color: var(--primary);
@@ -309,7 +318,8 @@
     color: var(--muted-foreground);
   }
   .book-utilities button {
-    font-size: 10px;
+    font-size: 11px;
+    min-height: 28px;
     display: flex;
     gap: 4px;
     align-items: center;
@@ -317,6 +327,23 @@
   }
   .book-utilities button:hover {
     color: var(--foreground);
+  }
+  .library-empty {
+    padding: 16px 8px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--muted-foreground);
+  }
+  .library-empty strong {
+    color: var(--foreground);
+    font-size: 13px;
+  }
+  .library-empty p {
+    margin: 6px 0;
+  }
+  .library-empty .text-button {
+    color: var(--primary);
+    padding-inline: 0;
   }
   .sidebar-footer {
     border-top: 1px solid var(--border);
@@ -408,6 +435,13 @@
     display: grid;
     place-items: center;
   }
+  .formula-bar.is-editing {
+    box-shadow: inset 0 -2px var(--primary);
+  }
+  .formula-form button:hover:not(:disabled) {
+    background: var(--accent);
+    border-radius: 4px;
+  }
   .formula-form button:disabled {
     opacity: 0.3;
   }
@@ -431,7 +465,7 @@
     gap: 6px;
   }
   .save-controls select {
-    max-width: 205px;
+    max-width: 145px;
     height: 32px;
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -582,7 +616,8 @@
     flex-shrink: 0;
   }
   .pane-heading strong {
-    font-size: 11px;
+    min-width: 0;
+    font-size: 12px;
     font-weight: 550;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -593,13 +628,14 @@
     margin-left: 3px;
   }
   .pane-actions {
+    flex-shrink: 0;
     margin-left: auto;
     display: flex;
     gap: 0;
   }
   .pane-actions .icon-button {
-    width: 22px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
     padding: 3px;
   }
   .sheet-viewport {
@@ -628,11 +664,22 @@
     min-width: 0;
   }
   .sheet-tabs button {
-    font-size: 11px;
+    font-size: 12px;
+    flex-shrink: 0;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
     color: var(--muted-foreground);
     padding: 0 12px;
     white-space: nowrap;
     border-bottom: 2px solid transparent;
+  }
+  .sheet-tabs button:focus-visible {
+    outline-offset: -3px;
+  }
+  .sheet-tabs button:hover {
+    color: var(--foreground);
+    background: var(--muted);
   }
   .sheet-tabs button[aria-selected="true"] {
     border-bottom-color: var(--primary);
@@ -646,16 +693,17 @@
   .zoom-control select {
     background: transparent;
     border: 0;
-    font-size: 10px;
+    font-size: 12px;
     color: var(--muted-foreground);
-    max-width: 65px;
+    max-width: 72px;
+    min-height: 28px;
   }
   .workspace-status {
     height: 30px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 10px;
+    font-size: 11px;
     color: var(--muted-foreground);
     gap: 10px;
     flex-shrink: 0;
@@ -670,6 +718,19 @@
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+  }
+  .save-status {
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .save-status.is-unsaved {
+    color: var(--foreground);
+  }
+  .save-status.is-saved {
+    color: var(--primary);
+  }
+  .save-status.has-error {
+    color: var(--destructive);
   }
   .status-dot {
     display: inline-block;
@@ -725,8 +786,19 @@
     justify-content: center;
     height: 100%;
     min-height: 200px;
-    border: 1px dashed var(--border);
-    border-radius: 8px;
+    padding: 24px;
+    text-align: center;
+  }
+  .empty-workspace h2 {
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .empty-workspace p {
+    max-width: 44ch;
+    color: var(--muted-foreground);
+    line-height: 1.6;
+    margin-bottom: 8px;
   }
   .empty-illustration {
     color: var(--primary);
@@ -857,6 +929,9 @@
     padding: 10px;
     border-radius: 6px;
   }
+  .compact-pane-switcher {
+    display: none;
+  }
   @media (max-width: 1200px) {
     .pane-sheet-count {
       display: none;
@@ -879,15 +954,59 @@
     .tile-stage {
       padding: 5px;
     }
-    .tile-stage > .tile-split {
-      min-width: 550px;
+    /* Preserve the split tree and mounted grids; only the active pane is shown.
+       Widening the window restores the exact desktop layout. */
+    .tile-split .tile-branch:not(:has(.workbook-pane.active)),
+    .tile-divider {
+      display: none;
+    }
+    .tile-split .tile-branch:has(.workbook-pane.active) {
+      flex: 1 1 0 !important;
+    }
+    .compact-pane-switcher {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 10px;
+      background: var(--sidebar);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .compact-pane-switcher label {
+      font-size: 12px;
+      color: var(--muted-foreground);
+      flex-shrink: 0;
+    }
+    .compact-pane-switcher select {
+      flex: 1;
+      min-width: 0;
+      height: 32px;
+      padding: 0 6px;
+      border: 1px solid var(--input);
+      border-radius: 5px;
+      background: var(--background);
+      color: var(--foreground);
+      font-size: 12px;
+    }
+    .save-controls select {
+      max-width: 130px;
+    }
+    .pane-actions .icon-button {
+      width: 32px;
+      height: 32px;
+    }
+    .pane-heading {
+      height: 40px;
+    }
+    .sheet-footer {
+      height: 40px;
     }
     .workspace-status > span:first-child {
       display: none;
     }
     .workspace-status > span:last-child {
       display: inline-flex;
-      font-size: 10px;
+      font-size: 11px;
       flex: 1;
       justify-content: flex-end;
     }

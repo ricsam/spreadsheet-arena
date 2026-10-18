@@ -8,11 +8,11 @@ A local-first workspace for connected spreadsheets.
 
 - Drop Excel `.xlsx`/`.xlsm`, CSV, TSV, or formula-engine JSON files. Imports never upload your workbook to a server.
 - Create blank workbooks and add sheets. All workbooks live in **one FormulaEngine instance**, including cross-workbook formulas such as `=[Assumptions]Inputs!B4`.
-- Arrange up to eight workbook views in nested horizontal/vertical splits. Drag a divider, use its arrow keys, or double-click it to reset. Maximize, restore, and close panes without deleting their workbooks.
-- Edit cells directly or in the formula bar; jump to an A1 address; use range selection, copy/paste, undo/redo, and per-pane zoom.
+- Arrange up to eight workbook views in nested horizontal/vertical splits. Drag a divider, use its arrow keys, or double-click it to reset. Maximize, restore, and close panes without deleting their workbooks. On narrow screens, **Open pane** switches between full-width views; widening the window restores the same split layout.
+- Edit cells directly or in the formula bar; jump to an A1 address; use range selection, copy/paste, undo/redo, and per-pane zoom. Formula drafts have explicit apply/cancel controls (Enter/Escape). Sheet tabs support arrow keys and Home/End.
 - Export one workbook as native formula-engine JSON, or download a **workspace backup** containing all workbooks and layout. Importing JSON adds workbooks; restoring a workspace explicitly confirms replacement.
 - **Manual save** to IndexedDB with **Save** or **Ctrl/Cmd+S**: workbook contents, styles/metadata, column/row sizes, pane layout, active sheets/cells, zoom, sidebar, formula display, and maximized pane. Edits, navigation, imports and restored backups are **not saved automatically**. Undo history and transient dialogs/drafts are not persisted.
-- Choose **Workbook only (no cache)** (default) for a smaller snapshot, or **Workbook + calculation cache** to retain warm results for faster reopening. Workbook-only reloads recalculate formulas on demand; neither mode changes formulas or source data. Save captures the chosen mode afresh, even without a new edit.
+- Choose **Workbook only** (default, no cache) for a smaller snapshot, or **Include cache** to retain warm calculation results for faster reopening. Workbook-only reloads recalculate formulas on demand; neither mode changes formulas or source data. Save captures the chosen mode afresh, even without a new edit.
 - Editing and workspace controls are locked while saving. Serialization is synchronous and can pause the browser for large workspaces; a notice is shown first. Keep the tab open until it says **Saved on this device**. Apply/cancel a cell draft before saving.
 
 Two small connected example workbooks appear on first launch. Edit the assumptions to see the launch budget recalculate.

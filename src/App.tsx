@@ -15,6 +15,7 @@ import {
   Bug,
   Check,
   ChevronDown,
+  ChevronRight,
   Columns2,
   FileSpreadsheet,
   FolderOpen,
@@ -32,6 +33,7 @@ import {
   Rows2,
   Search,
   Save,
+  Table2,
   Undo2,
   X,
 } from "lucide-react";
@@ -205,7 +207,7 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [sidebar, setSidebar] = useState(
-    () => !window.matchMedia("(max-width: 700px)").matches,
+    () => !window.matchMedia("(max-width: 900px)").matches,
   );
   const [query, setQuery] = useState("");
   const [dialog, setDialog] = useState<DialogState | null>(null);
@@ -245,6 +247,9 @@ export function App() {
   const allPanes = panes(layout);
   const active = allPanes.find((p) => p.id === activePaneId) ?? allPanes[0];
   const books = [...engine.getWorkbooks().keys()];
+  const filteredBooks = books.filter((name) =>
+    name.toLowerCase().includes(query.trim().toLowerCase()),
+  );
   const notifyError = useCallback(
     (e: unknown) =>
       setNotice({
@@ -700,6 +705,21 @@ export function App() {
       </div>
     );
 
+  const openFromLibrary = (name: string, sheet?: string) => {
+    try {
+      openBook(name, sheet);
+      if (window.matchMedia("(max-width: 900px)").matches) setSidebar(false);
+    } catch (error) {
+      notifyError(error);
+    }
+  };
+
+  const cancelFormula = () => {
+    setFormula(raw);
+    setFormulaDirty(false);
+    formulaInput.current?.focus();
+  };
+
   const renderPane = (pane: Pane) => {
     const sheets = engine.getOrderedSheetNames(pane.workbookName);
     const sheetName = sheets.includes(pane.sheetName)
@@ -732,7 +752,7 @@ export function App() {
         <header className="pane-heading">
           <span className="pane-dot" />
           <FileSpreadsheet size={16} />
-          <strong>{pane.workbookName}</strong>
+          <strong title={pane.workbookName}>{pane.workbookName}</strong>
           <span className="pane-sheet-count">
             {sheets.length} {sheets.length === 1 ? "sheet" : "sheets"}
           </span>
@@ -773,7 +793,12 @@ export function App() {
             </IconButton>
           </div>
         </header>
-        <div className="sheet-viewport">
+        <div
+          className="sheet-viewport"
+          id={`sheet-panel-${pane.id}`}
+          role="tabpanel"
+          aria-label={`${pane.workbookName}, ${sheetName}`}
+        >
           <div
             className="sheet-scale"
             style={{
@@ -847,6 +872,36 @@ export function App() {
                 key={name}
                 role="tab"
                 aria-selected={sheetName === name}
+                aria-controls={`sheet-panel-${pane.id}`}
+                tabIndex={sheetName === name ? 0 : -1}
+                title={name}
+                onKeyDown={(event) => {
+                  const index = sheets.indexOf(name);
+                  const next =
+                    event.key === "ArrowRight"
+                      ? (index + 1) % sheets.length
+                      : event.key === "ArrowLeft"
+                        ? (index - 1 + sheets.length) % sheets.length
+                        : event.key === "Home"
+                          ? 0
+                          : event.key === "End"
+                            ? sheets.length - 1
+                            : -1;
+                  if (next < 0) return;
+                  event.preventDefault();
+                  const tabs = event.currentTarget.parentElement!;
+                  patchPane(pane.id, { sheetName: sheets[next], cell: "A1" });
+                  setActivePaneId(pane.id);
+                  const target =
+                    tabs.querySelectorAll<HTMLButtonElement>('[role="tab"]')[
+                      next
+                    ];
+                  target.focus();
+                  target.scrollIntoView({
+                    block: "nearest",
+                    inline: "nearest",
+                  });
+                }}
                 onClick={() => {
                   patchPane(pane.id, { sheetName: name, cell: "A1" });
                   setActivePaneId(pane.id);
@@ -972,7 +1027,6 @@ export function App() {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" size="sm">
-                      <FolderOpen size={15} />
                       Workspace
                       <ChevronDown size={13} />
                     </Button>
@@ -1002,102 +1056,129 @@ export function App() {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
-                <span>⌕</span>
+                {query && (
+                  <button
+                    type="button"
+                    aria-label="Clear workbook filter"
+                    onClick={() => setQuery("")}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </label>
               <div className="library-label">
-                WORKBOOKS <span>{books.length}</span>
+                Workbooks{" "}
+                <span>
+                  {query.trim()
+                    ? `${filteredBooks.length} / ${books.length}`
+                    : books.length}
+                </span>
               </div>
               <nav aria-label="Workbooks" className="workbook-list">
-                {books
-                  .filter((name) =>
-                    name.toLowerCase().includes(query.toLowerCase()),
-                  )
-                  .map((name, index) => {
-                    const open = allPanes.some((p) => p.workbookName === name);
-                    const current = active?.workbookName === name;
-                    const sheets = engine.getOrderedSheetNames(name);
-                    return (
-                      <div
-                        className={`library-book ${current ? "current" : ""}`}
-                        key={name}
+                {filteredBooks.map((name) => {
+                  const open = allPanes.some((p) => p.workbookName === name);
+                  const current = active?.workbookName === name;
+                  const sheets = engine.getOrderedSheetNames(name);
+                  return (
+                    <div
+                      className={`library-book ${current ? "current" : ""}`}
+                      key={name}
+                    >
+                      <button
+                        className="book-button"
+                        aria-label={`Open ${name}`}
+                        aria-current={current ? "true" : undefined}
+                        title={name}
+                        onClick={() => openFromLibrary(name)}
                       >
+                        <span className="book-icon">
+                          <FileSpreadsheet size={17} />
+                        </span>
+                        <span className="book-name">
+                          {name}
+                          <small>
+                            {sheets.length}{" "}
+                            {sheets.length === 1 ? "sheet" : "sheets"}
+                            {open ? " · open" : ""}
+                          </small>
+                        </span>
+                        <ChevronRight size={13} aria-hidden="true" />
+                      </button>
+                      {current && (
+                        <div className="book-sheets">
+                          {sheets.map((sheet) => (
+                            <button
+                              key={sheet}
+                              onClick={() => openFromLibrary(name, sheet)}
+                              title={sheet}
+                              className={
+                                active?.sheetName === sheet ? "selected" : ""
+                              }
+                            >
+                              <Table2 size={13} aria-hidden="true" />
+                              {sheet}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <div className="book-utilities">
                         <button
-                          className="book-button"
-                          aria-label={`Open ${name}`}
-                          aria-current={current ? "true" : undefined}
+                          aria-label={`Download ${name}`}
                           onClick={() => {
                             try {
-                              openBook(name);
+                              download(
+                                `${name}.workbook.json`,
+                                exportWorkbook(engine, name),
+                              );
                             } catch (e) {
                               notifyError(e);
                             }
                           }}
                         >
-                          <span className={`book-icon tone-${index % 3}`}>
-                            <FileSpreadsheet size={17} />
-                          </span>
-                          <span className="book-name">
-                            {name}
-                            <small>
-                              {sheets.length}{" "}
-                              {sheets.length === 1 ? "sheet" : "sheets"}
-                              {open ? " · open" : ""}
-                            </small>
-                          </span>
-                          <ChevronDown size={13} />
+                          <ArrowDownToLine size={12} />
+                          Export
                         </button>
-                        {current && (
-                          <div className="book-sheets">
-                            {sheets.map((sheet) => (
-                              <button
-                                key={sheet}
-                                onClick={() => openBook(name, sheet)}
-                                className={
-                                  active?.sheetName === sheet ? "selected" : ""
-                                }
-                              >
-                                <span>▦</span>
-                                {sheet}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        <div className="book-utilities">
-                          <button
-                            aria-label={`Download ${name}`}
-                            onClick={() => {
-                              try {
-                                download(
-                                  `${name}.workbook.json`,
-                                  exportWorkbook(engine, name),
-                                );
-                              } catch (e) {
-                                notifyError(e);
-                              }
-                            }}
-                          >
-                            <ArrowDownToLine size={12} />
-                            Export
-                          </button>
-                          <button
-                            aria-label={`Remove ${name}`}
-                            onClick={() =>
-                              setDialog({
-                                title: `Remove ${name}?`,
-                                description:
-                                  "This removes the workbook from this device. Formulas in other workbooks may refer to it. Export a copy first; removal can be undone.",
-                                danger: true,
-                                action: () => engine.removeWorkbook(name),
-                              })
-                            }
-                          >
-                            <X size={12} />
-                            Remove
-                          </button>
-                        </div>
+                        <button
+                          aria-label={`Remove ${name}`}
+                          onClick={() =>
+                            setDialog({
+                              title: `Remove ${name}?`,
+                              description:
+                                "This removes the workbook from this device. Formulas in other workbooks may refer to it. Export a copy first; removal can be undone.",
+                              danger: true,
+                              action: () => engine.removeWorkbook(name),
+                            })
+                          }
+                        >
+                          <X size={12} />
+                          Remove
+                        </button>
                       </div>
-                    );
-                  })}
+                    </div>
+                  );
+                })}
+                {filteredBooks.length === 0 && (
+                  <div className="library-empty" role="status">
+                    <strong>
+                      {books.length
+                        ? "No matching workbooks"
+                        : "No workbooks yet"}
+                    </strong>
+                    <p>
+                      {books.length
+                        ? "Try a different name or clear your search."
+                        : "Create a workbook or import a file to get started."}
+                    </p>
+                    {books.length > 0 && (
+                      <button
+                        className="text-button"
+                        onClick={() => setQuery("")}
+                      >
+                        Clear search
+                      </button>
+                    )}
+                  </div>
+                )}
               </nav>
               <div className="sidebar-footer">
                 <a
@@ -1131,7 +1212,7 @@ export function App() {
           </ResizableSidebar>
         )}
         <main id="workspace" className="workspace" tabIndex={-1}>
-          <div className="formula-bar">
+          <div className={`formula-bar ${formulaDirty ? "is-editing" : ""}`}>
             {!sidebar && (
               <IconButton
                 label="Show sidebar"
@@ -1177,7 +1258,12 @@ export function App() {
               <input
                 ref={formulaInput}
                 aria-label="Cell value or formula"
-
+                aria-description="Press Enter to apply your edit or Escape to cancel."
+                placeholder={
+                  active
+                    ? "Enter a value or formula"
+                    : "Open a workbook to edit cells"
+                }
                 value={formula}
                 disabled={!active}
                 onChange={(event) => {
@@ -1186,12 +1272,22 @@ export function App() {
                 }}
                 onKeyDown={(event) => {
                   if (event.key === "Escape") {
-                    setFormula(raw);
-                    setFormulaDirty(false);
+                    cancelFormula();
                   }
                 }}
               />
+              {formulaDirty && (
+                <button
+                  type="button"
+                  aria-label="Cancel cell edit"
+                  title="Cancel edit (Escape)"
+                  onClick={cancelFormula}
+                >
+                  <X size={16} />
+                </button>
+              )}
               <button
+                title="Apply edit (Enter)"
                 aria-label="Apply cell value"
                 disabled={!active || !formulaDirty}
               >
@@ -1232,14 +1328,16 @@ export function App() {
               </Button>
               <select
                 aria-label="Save contents"
+                title="Save contents: workbook only for a smaller save, or include calculation cache for faster reopening. Neither changes your formulas."
+                aria-description="Workbook only saves without calculation cache. Including cache makes a larger save that can reopen faster. Neither changes your formulas."
                 value={includeEvaluationState ? "warm" : "compact"}
                 disabled={saveInProgress}
                 onChange={(event) =>
                   setIncludeEvaluationState(event.target.value === "warm")
                 }
               >
-                <option value="compact">Workbook only (no cache)</option>
-                <option value="warm">Workbook + calculation cache</option>
+                <option value="compact">Workbook only</option>
+                <option value="warm">Include cache</option>
               </select>
             </div>
             <span className="toolbar-divider" />
@@ -1335,6 +1433,26 @@ export function App() {
               </IconButton>
             </div>
           )}
+          {allPanes.length > 0 && (
+            <div className="compact-pane-switcher">
+              <label htmlFor="compact-pane">Open pane</label>
+              <select
+                id="compact-pane"
+                value={active?.id ?? ""}
+                onChange={(event) => {
+                  setActivePaneId(event.target.value);
+                  setMaximized(null);
+                }}
+              >
+                {allPanes.map((pane, index) => (
+                  <option key={pane.id} value={pane.id}>
+                    {pane.workbookName} / {pane.sheetName} · {index + 1} of{" "}
+                    {allPanes.length}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="tile-stage">
             {layout ? (
               maximized && allPanes.some((p) => p.id === maximized) ? (
@@ -1355,8 +1473,30 @@ export function App() {
                 <div className="empty-illustration">
                   <FileSpreadsheet size={45} />
                 </div>
+                <h2>
+                  {books.length
+                    ? "Your workbooks are still here"
+                    : "Start your workspace"}
+                </h2>
+                <p>
+                  {books.length
+                    ? "Closing a pane doesn’t delete its workbook. Reopen one from the library, or create something new."
+                    : "Create a blank workbook or import Excel, CSV, TSV, or JSON. Your files stay in this browser."}
+                </p>
+                {books.length > 0 && (
+                  <button
+                    className="button primary"
+                    onClick={() => {
+                      setSidebar(true);
+                      if (window.matchMedia("(max-width: 900px)").matches)
+                        setInspector(false);
+                    }}
+                  >
+                    <FolderOpen size={16} /> Open workbook library
+                  </button>
+                )}
                 <button
-                  className="button primary"
+                  className={`button ${books.length ? "" : "primary"}`}
                   onClick={() => createBook("Untitled workbook")}
                 >
                   <Plus size={16} />
@@ -1400,7 +1540,11 @@ export function App() {
                 </IconButton>
               </div>
             )}
-            <span role="status">
+            <span
+              role="status"
+              className={`save-status ${saveError || !storageAvailable ? "has-error" : unsaved || formulaDirty ? "is-unsaved" : "is-saved"}`}
+              title="Changes are saved only when you choose Save or press Ctrl/Cmd+S."
+            >
               {active?.cell ?? "A1"}
               <span className="status-separator">|</span>
               {saving}
