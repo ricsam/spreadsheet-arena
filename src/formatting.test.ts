@@ -3,6 +3,7 @@ import { FormulaEngine, type RangeAddress } from "@ricsam/formula-engine";
 import {
   applyStyle,
   applyDataType,
+  describeTableSortFilter,
   saveTable,
   setDimension,
   tableRange,
@@ -113,5 +114,47 @@ describe("table definitions", () => {
     area.range.end.row = { type: "infinity", sign: "positive" };
     expect(() => saveTable(e, [area], "Other")).toThrow();
     expect(e.getTables("Book").size).toBe(1);
+  });
+});
+describe("table sort and filter summary", () => {
+  it("describes value lists, conditions, sort keys and hidden rows", () => {
+    const e = engine();
+    saveTable(e, [range()], "Items");
+    const tableName = { workbookName: "Book", tableName: "Items" };
+    const summary = () => describeTableSortFilter(e.getTable(tableName)!);
+    expect(summary()).toEqual({ filters: [], sort: undefined, hiddenRows: 0 });
+    e.setTableColumnFilter({
+      ...tableName,
+      column: 0,
+      filter: {
+        type: "values",
+        values: ["One", "Two", "Three", 4, true],
+        blanks: true,
+      },
+    });
+    e.setTableColumnFilter({
+      ...tableName,
+      column: 1,
+      filter: {
+        type: "condition",
+        conditions: [
+          { operator: "lessThan", value: 15 },
+          { operator: "contains", value: "x" },
+        ],
+        match: "any",
+      },
+    });
+    e.sortTable({
+      ...tableName,
+      keys: [{ column: 1, direction: "descending" }],
+    });
+    expect(summary()).toEqual({
+      filters: [
+        "Name: One, Two, Three and 3 more",
+        "Value < 15 or contains \u201cx\u201d",
+      ],
+      sort: "Value descending",
+      hiddenRows: 1,
+    });
   });
 });

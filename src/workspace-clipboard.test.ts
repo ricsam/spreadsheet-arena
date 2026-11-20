@@ -44,6 +44,63 @@ function setup() {
   return { engine, clipboard };
 }
 describe("workspace clipboard", () => {
+  it("copies only the rows a table filter shows and pastes them without gaps", () => {
+    const engine = new FormulaEngine();
+    engine.addWorkbook({
+      workbookName: "Book",
+      data: {
+        sheets: [
+          {
+            name: "Sheet1",
+            content: {
+              A1: "Item",
+              B1: "Cost",
+              A2: "a",
+              B2: 1,
+              A3: "b",
+              B3: 2,
+              A4: "c",
+              B4: 3,
+              A5: "d",
+              B5: "=B4+1",
+            },
+          },
+        ],
+        tables: [
+          {
+            name: "Costs",
+            sheetName: "Sheet1",
+            start: "A1",
+            numRows: { type: "number", value: 4 },
+            numCols: 2,
+          },
+        ],
+      },
+    });
+    engine.setTableColumnFilter({
+      workbookName: "Book",
+      tableName: "Costs",
+      column: 0,
+      filter: { type: "values", values: ["a", "c", "d"] },
+    });
+    const clipboard = new WorkspaceClipboardManager(engine);
+    clipboard.copyRanges([range("Book", 1, 0, 4, 1)]);
+    clipboard.pasteRanges([range("Book", 0, 3)]);
+    const sheet = { workbookName: "Book", sheetName: "Sheet1" };
+    const value = (rowIndex: number, colIndex: number) =>
+      engine.getCellValue({ ...sheet, rowIndex, colIndex });
+    expect([0, 1, 2].map((row) => [value(row, 3), value(row, 4)])).toEqual([
+      ["a", 1],
+      ["c", 3],
+      ["d", 4],
+    ]);
+    // The formula moved up with its row, like the values next to it.
+    const content = engine.getSheet(sheet)!.content;
+    expect(content.get("E3")).toBe("=E2+1");
+    expect(content.has("D4") || content.has("E4")).toBe(false);
+    engine.undo();
+    expect(engine.getSheet(sheet)!.content.has("D1")).toBe(false);
+  });
   it("blocks clipboard mutation callbacks while a save lock is held", () => {
     const { engine } = setup();
     let locked = false;

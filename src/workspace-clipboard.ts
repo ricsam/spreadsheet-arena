@@ -14,11 +14,15 @@ type CopyContext = Parameters<WorkbookClipboardManager["triggerCopy"]>[0];
 type PasteContext = Parameters<WorkbookClipboardManager["triggerPaste"]>[0];
 const MAX_CELLS = 100_000;
 
-export function selectionForRanges(ranges: RangeAddress[]): SelectionManager {
+export function selectionForRanges(
+  ranges: RangeAddress[],
+  hiddenRows: Iterable<number> = [],
+): SelectionManager {
   const sm = new SelectionManager(
     () => ({ type: "infinity" }),
     () => ({ type: "infinity" }),
     () => [],
+    { hiddenRows },
   );
   sm.replaceSelections(
     ranges.map(({ range }) => ({
@@ -126,14 +130,15 @@ export class WorkspaceClipboardManager extends WorkbookClipboardManager {
         : selected.start.col,
     );
     // Include blank cells: the upstream extraction only returns occupied cells,
-    // which otherwise shifts ranges and loses blank-cell formatting.
+    // which otherwise shifts ranges and loses blank-cell formatting. Rows a
+    // table filter hides are not part of the copy (`extracted.rows` skips them).
     const cells: CellAddress[] = [];
-    for (let r = 0; r < extracted.height; r++)
+    for (const rowIndex of extracted.rows)
       for (let c = 0; c < extracted.width; c++)
         cells.push({
           workbookName: context.workbookName,
           sheetName: context.sheetName,
-          rowIndex: row + r,
+          rowIndex,
           colIndex: col + c,
         });
     const snapshot = this.workspaceEngine.serializeEngine({
@@ -151,7 +156,11 @@ export class WorkspaceClipboardManager extends WorkbookClipboardManager {
     if (source)
       this.triggerCopy({
         ...source,
-        selectionManager: selectionForRanges(ranges),
+        // Copy what the grid shows: rows hidden by table filters are skipped.
+        selectionManager: selectionForRanges(
+          ranges,
+          this.workspaceEngine.getHiddenRows(source),
+        ),
         copyType: "value",
         cut,
       });
@@ -193,8 +202,70 @@ export class WorkspaceClipboardManager extends WorkbookClipboardManager {
     type: "value" | "formula" = "formula",
   ): void {
     if (this.isLocked() || !this.snapshot || !ranges.length) return;
+    if (!this.hasHiddenRowGaps()) {
+      this.pasteSource(this.copiedCells, ranges, formatting, type);
+    } else {
+      // Copied from a filtered range: the visible rows paste one after
+      // another, as the clipboard text has them, and nothing is filled.
+      if (this.isCut && ranges.length !== 1)
+        throw new Error("Cut cells can only be pasted to one range.");
+      const runs: { first: number; last: number; offset: number }[] = [];
+      this.copiedRows.forEach((row, offset) => {
+        const run = runs.at(-1);
+        if (run && row === run.last + 1) run.last = row;
+        else runs.push({ first: row, last: row, offset });
+      });
+      const width =
+        new Set(this.copiedCells.map((cell) => cell.colIndex)).size || 1;
+      this.workspaceEngine.transact(() => {
+        for (const address of ranges)
+          for (const run of runs) {
+            const row = address.range.start.row + run.offset;
+            const col = address.range.start.col;
+            this.pasteSource(
+              this.copiedCells.filter(
+                (cell) =>
+                  cell.rowIndex >= run.first && cell.rowIndex <= run.last,
+              ),
+              [
+                {
+                  ...address,
+                  range: {
+                    start: { row, col },
+                    end: {
+                      row: {
+                        type: "number",
+                        value: row + run.last - run.first,
+                      },
+                      col: { type: "number", value: col + width - 1 },
+                    },
+                  },
+                },
+              ],
+              formatting,
+              type,
+            );
+          }
+      });
+    }
+    if (this.isCut) {
+      this.isCut = false;
+      this.snapshot = undefined;
+      this.version++;
+      this.listeners.forEach((listener) => listener());
+    }
+  }
+
+  /** Pastes `source` (copied cells, in copy order) into `ranges`. */
+  private pasteSource(
+    source: CellAddress[],
+    ranges: RangeAddress[],
+    formatting: PasteFormatting,
+    type: "value" | "formula",
+  ): void {
+    const snapshot = this.snapshot;
+    if (!snapshot || !source.length) return;
     const engine = this.workspaceEngine;
-    const source = this.copiedCells;
     let minRow = Infinity,
       minCol = Infinity,
       maxRow = -Infinity,
@@ -266,16 +337,11 @@ export class WorkspaceClipboardManager extends WorkbookClipboardManager {
         { ...ranges[0], areas: [ranges[0].range] },
         { cut: true, type, include },
       );
-      this.isCut = false;
-      this.snapshot = undefined;
-      this.version++;
-      this.listeners.forEach((listener) => listener());
       return;
     }
     // Use an isolated engine to reuse its formula translation/fill semantics.
     // Never temporarily mutate the user's source cells or restore the live engine.
     const frozen = new FormulaEngine();
-    const snapshot = this.snapshot;
     engine.transact(() => {
       for (const { address, h, w } of destinations) {
         frozen.resetToSerializedEngine(snapshot);

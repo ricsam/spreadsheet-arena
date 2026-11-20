@@ -5,6 +5,7 @@ import {
   type CellDataType,
   type RangeAddress,
   type TableDefinition,
+  type TableFilterConditionOperator,
 } from "@ricsam/formula-engine";
 
 export const SHEET_ROWS = 1048576;
@@ -162,6 +163,60 @@ export function tableRange(table: TableDefinition): RangeAddress {
       },
     },
   };
+}
+const CONDITION_LABELS: Record<TableFilterConditionOperator, string> = {
+  equals: "=",
+  notEquals: "≠",
+  greaterThan: ">",
+  greaterThanOrEqual: "≥",
+  lessThan: "<",
+  lessThanOrEqual: "≤",
+  beginsWith: "begins with",
+  endsWith: "ends with",
+  contains: "contains",
+  notContains: "does not contain",
+};
+const filterValue = (value: string | number | boolean) =>
+  typeof value === "string"
+    ? `“${value}”`
+    : typeof value === "boolean"
+      ? String(value).toUpperCase()
+      : String(value);
+
+export function tableColumnName(table: TableDefinition, column: number) {
+  for (const header of table.headers.values())
+    if (header.index === column) return header.name;
+  return `Column ${column + 1}`;
+}
+
+/** One-line descriptions of a table's sort and filters for the inspector. */
+export function describeTableSortFilter(table: TableDefinition) {
+  const filters = (table.filter?.columns ?? []).map(({ column, filter }) => {
+    const name = tableColumnName(table, column);
+    if (filter.type === "condition")
+      return `${name} ${filter.conditions
+        .map((c) => `${CONDITION_LABELS[c.operator]} ${filterValue(c.value)}`)
+        .join(filter.match === "any" ? " or " : " and ")}`;
+    const shown = [
+      ...filter.values.map((value) =>
+        typeof value === "string" ? value : filterValue(value),
+      ),
+      ...(filter.blanks ? ["(Blanks)"] : []),
+      ...(filter.errors ?? []),
+    ];
+    if (!shown.length) return `${name}: nothing shown`;
+    return `${name}: ${
+      shown.length > 4
+        ? `${shown.slice(0, 3).join(", ")} and ${shown.length - 3} more`
+        : shown.join(", ")
+    }`;
+  });
+  const sort = table.sort?.length
+    ? table.sort
+        .map((key) => `${tableColumnName(table, key.column)} ${key.direction}`)
+        .join(", then ")
+    : undefined;
+  return { filters, sort, hiddenRows: table.filter?.hiddenRows.length ?? 0 };
 }
 export function setDimension(
   engine: FormulaEngine,
