@@ -61,6 +61,50 @@ export function createEmptyWorkbook(
   engine.addWorkbook({ workbookName, data: { sheets: [{ name: "Sheet1" }] } });
   return workbookName;
 }
+/** A small expense log for trying table sorting and filtering. */
+const DEMO_EXPENSES: [string, string, string, number, string][] = [
+  ["Venue deposit", "Venue", "Alex", 1200, "Paid"],
+  ["Catering tasting", "Catering", "Sam", 180, "Paid"],
+  ["Sound system", "Equipment", "Jordan", 650, "Booked"],
+  ["Stage lighting", "Equipment", "Jordan", 420, "Quote"],
+  ["Printed signage", "Creative", "Riley", 310, "Paid"],
+  ["Photographer", "Creative", "Riley", 500, "Booked"],
+  ["Catering balance", "Catering", "Sam", 3420, "Quote"],
+  ["Welcome drinks", "Catering", "Sam", 260, "Booked"],
+  ["Venue balance", "Venue", "Alex", 1200, "Quote"],
+  ["Name badges", "Creative", "Riley", 85, "Paid"],
+  ["Insurance", "Admin", "Alex", 140, "Paid"],
+  ["Cleaning crew", "Venue", "Jordan", 220, "Quote"],
+  ["Gift bags", "Creative", "Riley", 400, "Booked"],
+  ["Contingency hold", "Admin", "Alex", 350, "Quote"],
+];
+
+function demoExpenses(): Record<string, string | number> {
+  const content: Record<string, string | number> = {
+    A1: "Item",
+    B1: "Category",
+    C1: "Owner",
+    D1: "Amount",
+    E1: "Status",
+    F1: "Incl. VAT",
+  };
+  DEMO_EXPENSES.forEach(([item, category, owner, amount, status], index) => {
+    const row = index + 2;
+    Object.assign(content, {
+      [`A${row}`]: item,
+      [`B${row}`]: category,
+      [`C${row}`]: owner,
+      [`D${row}`]: amount,
+      [`E${row}`]: status,
+      [`F${row}`]: "=[@Amount]*1.25",
+    });
+  });
+  const totalRow = DEMO_EXPENSES.length + 3;
+  content[`A${totalRow}`] = "Total (every row)";
+  content[`D${totalRow}`] = "=SUM(Expenses[Amount])";
+  return content;
+}
+
 export function createDemoEngine(): FormulaEngine {
   const engine = new FormulaEngine();
   engine.addWorkbook({
@@ -125,6 +169,22 @@ export function createDemoEngine(): FormulaEngine {
             A12: "TOTAL LAUNCH BUDGET",
             D12: "=SUM(D9:D10)",
           },
+        },
+        {
+          name: "Expenses",
+          sheetMetadata: {
+            arenaColumnWidths: { A: 170, B: 105, C: 90, D: 95, E: 90, F: 95 },
+          },
+          content: demoExpenses(),
+        },
+      ],
+      tables: [
+        {
+          name: "Expenses",
+          sheetName: "Expenses",
+          start: "A1",
+          numRows: { type: "number", value: DEMO_EXPENSES.length },
+          numCols: 6,
         },
       ],
     },

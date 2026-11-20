@@ -110,15 +110,17 @@ test("sheet tabs use arrow and Home/End navigation with a single tab stop", asyn
     name: "Sheets in Launch budget",
     exact: true,
   });
-  const first = tabs.getByRole("tab").first();
-  const last = tabs.getByRole("tab").last();
+  const tabList = tabs.getByRole("tab");
+  const first = tabList.first();
+  const last = tabList.last();
   await expect(last).toHaveAttribute("aria-selected", "true");
+  const previous = tabList.nth((await tabList.count()) - 2);
   await last.focus();
   await last.press("ArrowLeft");
-  await expect(first).toBeFocused();
-  await expect(first).toHaveAttribute("aria-selected", "true");
+  await expect(previous).toBeFocused();
+  await expect(previous).toHaveAttribute("aria-selected", "true");
   await expect(last).toHaveAttribute("tabindex", "-1");
-  await first.press("End");
+  await previous.press("End");
   await expect(last).toBeFocused();
   await last.press("ArrowRight");
   await expect(first).toBeFocused();

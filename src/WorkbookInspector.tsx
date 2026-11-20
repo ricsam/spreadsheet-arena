@@ -3,12 +3,14 @@ import {
   indexToColumn,
   type CellDataType,
   type RangeAddress,
+  type TableDefinition,
 } from "@ricsam/formula-engine";
 import { StyleActions, type FormattingProps } from "./StyleActions";
 import { useActiveSelection } from "./workspace-selection";
 import {
   applyDataType,
   applyStyle,
+  describeTableSortFilter,
   firstAddress,
   saveTable,
   setDimension,
@@ -34,6 +36,58 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       <Label>{label}</Label>
       {children}
     </div>
+  );
+}
+/**
+ * The table's sort and filter state. Sorting and filtering themselves happen
+ * in the grid, through the buttons in the table's header row.
+ */
+function TableSortFilter({
+  table,
+  onReapply,
+  onClear,
+}: {
+  table: TableDefinition;
+  onReapply: () => void;
+  onClear: () => void;
+}) {
+  const { filters, sort, hiddenRows } = describeTableSortFilter(table);
+  return (
+    <section className="grid gap-2" aria-label="Sort and filter">
+      <Separator />
+      <Label>Sort &amp; filter</Label>
+      {filters.length ? (
+        <ul className="grid gap-1 text-xs" aria-label="Active filters">
+          {filters.map((text) => (
+            <li key={text} className="rounded-md bg-muted px-2 py-1">
+              {text}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          No filters. Use the buttons in the header row, or Alt+↓ on a header
+          cell, to sort and filter.
+        </p>
+      )}
+      <p className="text-xs text-muted-foreground" aria-label="Filter status">
+        {hiddenRows === 1 ? "1 row hidden" : `${hiddenRows} rows hidden`}
+        {sort ? ` · sorted by ${sort}` : ""}
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        <Button
+          variant="outline"
+          disabled={!filters.length}
+          title="Filter again after editing cells"
+          onClick={onReapply}
+        >
+          Reapply
+        </Button>
+        <Button variant="outline" disabled={!filters.length} onClick={onClear}>
+          Clear filters
+        </Button>
+      </div>
+    </section>
   );
 }
 export function WorkbookInspector(props: FormattingProps) {
@@ -308,6 +362,27 @@ export function WorkbookInspector(props: FormattingProps) {
               />
             </Field>
           </div>
+        )}
+        {table && (
+          <TableSortFilter
+            table={table}
+            onReapply={() =>
+              run(() =>
+                engine.reapplyTableFilters({
+                  workbookName: table.workbookName,
+                  tableName: table.name,
+                }),
+              )
+            }
+            onClear={() =>
+              run(() =>
+                engine.clearTableFilters({
+                  workbookName: table.workbookName,
+                  tableName: table.name,
+                }),
+              )
+            }
+          />
         )}
       </TabsContent>
       <TabsContent value="sheet" className="m-0 space-y-4 overflow-auto p-4">

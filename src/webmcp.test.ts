@@ -137,7 +137,78 @@ describe("automation contracts", () => {
       setup()
         .tools.filter((t) => t.annotations?.readOnlyHint)
         .map((t) => t.name),
-    ).toEqual(["list_workbooks", "read_cells"]);
+    ).toEqual(["list_workbooks", "read_cells", "list_tables"]);
+  });
+  it("sorts and filters tables and reports the rows filters hide", async () => {
+    const { engine, call } = setup();
+    const sheet = { workbookName: "Book", sheetName: "Sheet1" };
+    engine.setSheetContent(
+      sheet,
+      new Map<string, string | number>([
+        ["A1", "Item"],
+        ["B1", "Amount"],
+        ["A2", "b"],
+        ["B2", 2],
+        ["A3", "a"],
+        ["B3", 1],
+        ["A4", "c"],
+        ["B4", 3],
+      ]),
+    );
+    engine.addTable({
+      ...sheet,
+      tableName: "Costs",
+      start: "A1",
+      numCols: 2,
+      numRows: { type: "number", value: 3 },
+    });
+    const json = async (name: string, args: Record<string, unknown>) =>
+      JSON.parse((await call(name, args)).content[0].text);
+    const costs = { workbook: "Book", table: "Costs" };
+    expect(
+      await json("sort_table", {
+        ...costs,
+        column: "amount",
+        direction: "descending",
+      }),
+    ).toMatchObject({ sort: "Amount descending", hiddenRows: [] });
+    expect(engine.getCellValue(cellAddress("Book", "Sheet1", "A2"))).toBe("c");
+    expect(
+      await json("filter_table", {
+        ...costs,
+        column: "Amount",
+        operator: "greaterThan",
+        value: 1,
+      }),
+    ).toMatchObject({ filters: ["Amount > 1"], hiddenRows: [4] });
+    expect(
+      (await json("filter_table", { ...costs, column: "Item", values: ["A"] }))
+        .hiddenRows,
+    ).toEqual([2, 3, 4]);
+    expect((await json("list_tables", { workbook: "Book" }))[0]).toMatchObject({
+      name: "Costs",
+      sheet: "Sheet1",
+      range: "A1:B4",
+      columns: ["Item", "Amount"],
+      filters: ["Item: A", "Amount > 1"],
+    });
+    expect(
+      (await json("filter_table", { ...costs, column: "Amount" })).hiddenRows,
+    ).toEqual([2, 3]);
+    expect(engine.getHiddenRows(sheet)).toEqual(new Set([1, 2]));
+    for (const args of [
+      { ...costs, column: "Missing" },
+      { ...costs, column: "Item", values: ["a"], operator: "equals" },
+      { ...costs, column: "Item", operator: "near", value: "a" },
+    ])
+      expect((await call("filter_table", args)).isError).toBe(true);
+    expect(
+      (await call("sort_table", { ...costs, column: "Item", direction: "up" }))
+        .isError,
+    ).toBe(true);
+    expect((await call("list_tables", { workbook: "Nope" })).isError).toBe(
+      true,
+    );
   });
 });
 describe("formula bar parsing", () => {

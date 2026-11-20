@@ -10,12 +10,22 @@ A local-first workspace for connected spreadsheets.
 - Create blank workbooks and add sheets. All workbooks live in **one FormulaEngine instance**, including cross-workbook formulas such as `=[Assumptions]Inputs!B4`.
 - Arrange up to eight workbook views in nested horizontal/vertical splits. Drag a divider, use its arrow keys, or double-click it to reset. Maximize, restore, and close panes without deleting their workbooks. On narrow screens, **Open pane** switches between full-width views; widening the window restores the same split layout.
 - Edit cells directly or in the formula bar; jump to an A1 address; use range selection, copy/paste, undo/redo, and per-pane zoom. Formula drafts have explicit apply/cancel controls (Enter/Escape). Sheet tabs support arrow keys and Home/End.
+- Sort and filter tables like in Excel, from the buttons in their header row (see below).
 - Export one workbook as native formula-engine JSON, or download a **workspace backup** containing all workbooks and layout. Importing JSON adds workbooks; restoring a workspace explicitly confirms replacement.
 - **Manual save** to IndexedDB with **Save** or **Ctrl/Cmd+S**: workbook contents, styles/metadata, column/row sizes, pane layout, active sheets/cells, zoom, sidebar, formula display, and maximized pane. Edits, navigation, imports and restored backups are **not saved automatically**. Undo history and transient dialogs/drafts are not persisted.
 - Choose **Workbook only** (default, no cache) for a smaller snapshot, or **Include cache** to retain warm calculation results for faster reopening. Workbook-only reloads recalculate formulas on demand; neither mode changes formulas or source data. Save captures the chosen mode afresh, even without a new edit.
 - Editing and workspace controls are locked while saving. Serialization is synchronous and can pause the browser for large workspaces; a notice is shown first. Keep the tab open until it says **Saved on this device**. Apply/cancel a cell draft before saving.
 
 Two small connected example workbooks appear on first launch. Edit the assumptions to see the launch budget recalculate.
+
+## Sort and filter tables
+
+Every table has a sort and filter button in each header cell; Alt+↓ on a header cell opens it from the keyboard. Create a table from a selection in the inspector's **Table** tab, or import one from Excel. The **Expenses** sheet of the _Launch budget_ example holds a table to try it on.
+
+- **Sort** reorders the table's rows the way Excel does: each row's cells, formulas, styles and data types move together. Formulas outside the table keep their references, so `=SUM(Expenses[Amount])` is unaffected.
+- **Filter** by a condition or by ticking values (with counts, a search box and **(Blanks)**) to hide the rows that don't match. Row numbers skip hidden rows, arrow keys step over them, and copy, Delete and the fill handle only touch the rows you can see. Rows copied from a filtered table paste one after another. Totals such as `SUM` still count hidden rows, as in Excel.
+- Filters re-apply when you change them, sort or resize the table, but not after each edit: a row you edit stays visible until you press **Reapply** in the inspector's **Table** tab. That tab also lists the active filters, the number of hidden rows and the sort, and has **Clear filters**.
+- Sorting and filtering are ordinary undo steps, and the filters and sort are saved with the workbook, in backups and in JSON exports. Filters and sort orders saved in an `.xlsx` file are not imported yet.
 
 ## Privacy and durability
 
@@ -50,6 +60,9 @@ Browsers exposing `navigator.modelContext` register these WebMCP tools:
 | `select_cell`     | Open/select/reveal a cell                                    |
 | `set_cell`        | Edit a typed value or formula; `null` clears                 |
 | `create_workbook` | Create a blank workbook                                      |
+| `list_tables`     | List a workbook's tables, filters, sort and hidden rows      |
+| `sort_table`      | Sort a table by one column, ascending or descending          |
+| `filter_table`    | Filter a table column by values or a condition, or clear it  |
 
 Tools are temporarily unavailable while saving (including reads that could populate calculation caches). Mutation tools require the invoking agent to obtain user authorization; tool descriptions do not grant it. Workbook contents are untrusted data. No hidden global engine/debug API is exposed. Browsers without WebMCP retain the complete labelled UI. WebMCP registration and execution contracts are tested using a browser API test double; native protocol availability depends on the browser. A full screen-reader audit has not been performed.
 
