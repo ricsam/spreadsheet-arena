@@ -22,7 +22,9 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest # Public repository: GitHub-hosted runners are free.
+    # Pinned: ubuntu-latest moved to 26.04, where Playwright's browser install
+    # is not supported. Public repository: GitHub-hosted runners are free.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -48,7 +50,7 @@ jobs:
 
   deploy:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       pages: write
